@@ -29,6 +29,7 @@ class HomeAssistantWebSocket:
         *,
         ping_interval_s: int = 30,
         pong_timeout_s: int = 10,
+        read_timeout_s: int = 10,
         reconnect_initial_delay_s: int = 1,
         reconnect_max_delay_s: int = 30
     ) -> None:
@@ -48,6 +49,7 @@ class HomeAssistantWebSocket:
         self._message_id = 1
         self.ping_interval_s = ping_interval_s
         self.pong_timeout_s = pong_timeout_s
+        self.read_timeout_s = read_timeout_s
         self.reconnect_initial_delay_s = reconnect_initial_delay_s
         self.reconnect_max_delay_s = reconnect_max_delay_s
         self._last_pong_ms = ticks_ms()
@@ -302,14 +304,18 @@ class HomeAssistantWebSocket:
             await self.writer.awrite(masked)
 
     async def _read_exact(self, nbytes: int) -> bytes:
-        """Read exactly nbytes from the socket."""
+        """Read exactly nbytes from the socket with a timeout."""
         data = b""
+        start_ms = ticks_ms()
         while len(data) < nbytes:
             if self.reader is None:
                 raise ValueError("WebSocket not connected")
             chunk = await self.reader.read(nbytes - len(data))
             if not chunk:
-                raise ValueError("WebSocket connection closed")
+                if ticks_diff(ticks_ms(), start_ms) > (self.read_timeout_s * 1000):
+                    raise ValueError("WebSocket read timeout")
+                await asyncio.sleep(0.05)
+                continue
             data += chunk
         return data
 
