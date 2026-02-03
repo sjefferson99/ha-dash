@@ -16,6 +16,7 @@ class HADash:
         self.button1_event = Event()
         self.button1 = Button(BUTTON1_PIN, "Button1", self.button1_event)
         self.status_led = StatusLED()
+        self._flash_task = None
         self.wireless = WirelessNetwork()
         self.ha_api = HomeAssistantAPI(self.wireless)
         self.ha_ws = HomeAssistantWebSocket(self.wireless)
@@ -59,7 +60,12 @@ class HADash:
                 self.logger.info(f"state_changed: {entity_id} -> {state_value}")
             else:
                 self.logger.info(f"state_changed: {entity_id}")
-            create_task(self.status_led.async_flash(1, 4))
+            self.trigger_status_flash()
+
+    def trigger_status_flash(self) -> None:
+        """Trigger a single LED flash without overlapping tasks."""
+        if self._flash_task is None or self._flash_task.done():
+            self._flash_task = create_task(self.status_led.async_flash(1, 4))
 
     async def monitor_buttons(self) -> None:
         """Watch for button events and dispatch actions."""
