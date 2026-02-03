@@ -36,7 +36,10 @@ class HomeAssistantWebSocket:
         self.log = uLogger("HA-WS")
         self.wifi = network
         self.host = HA_HOST
-        self.port = int(HA_PORT)
+        try:
+            self.port = int(HA_PORT)
+        except Exception as e:
+            raise ValueError(f"Invalid HA_PORT: {HA_PORT}") from e
         self.token = HA_TOKEN
         self.reader = None
         self.writer = None
@@ -109,9 +112,13 @@ class HomeAssistantWebSocket:
     async def authenticate(self) -> None:
         """Perform Home Assistant token authentication over WebSocket."""
         msg = await self.receive_json()
+        if msg is None:
+            raise ValueError("Auth failed: no response received")
         if msg.get("type") == "auth_required":
             await self.send_json({"type": "auth", "access_token": self.token})
             auth_reply = await self.receive_json()
+            if auth_reply is None:
+                raise ValueError("Auth failed: no response received")
             if auth_reply.get("type") != "auth_ok":
                 raise ValueError(f"Auth failed: {auth_reply}")
             self.log.info("WebSocket auth ok")
@@ -135,11 +142,11 @@ class HomeAssistantWebSocket:
         data = dumps(payload)
         await self._send_frame(data)
 
-    async def receive_json(self) -> dict:
+    async def receive_json(self):
         """Receive a JSON message and update activity time."""
         data = await self._read_text_frame()
         if not data:
-            return {}
+            return None
         msg = loads(data)
         if msg.get("type") == "pong":
             self._last_pong_ms = ticks_ms()
@@ -149,8 +156,9 @@ class HomeAssistantWebSocket:
         """Continuously receive messages and invoke handler."""
         while True:
             msg = await self.receive_json()
-            if msg:
-                await handler(msg)
+            if msg is None:
+                raise ValueError("WebSocket receive returned no data")
+            await handler(msg)
 
     async def listen_forever(
         self,
