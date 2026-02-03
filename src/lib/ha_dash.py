@@ -1,10 +1,11 @@
 from lib.ulogging import uLogger
-from config import BUTTON1_PIN, BUTTON1_ENTITY
+from config import BUTTON1_PIN, BUTTON1_ENTITY, LED1_PIN, LED1_ENTITY
 from lib.networking import WirelessNetwork
 from lib.button import Button
 from lib.ha_api import HomeAssistantAPI
+from lib.ha_websocket import HomeAssistantWebSocket
 from asyncio import sleep_ms, Event, create_task, get_event_loop
-import lib.uaiohttpclient as httpclient
+from lib.utils import StatusLED
 
 class HADash:
     def __init__(self):
@@ -12,8 +13,10 @@ class HADash:
         self.logger.info("HADash initialized")
         self.button1_event = Event()
         self.button1 = Button(BUTTON1_PIN, "Button1", self.button1_event)
+        self.status_led = StatusLED()
         self.wireless = WirelessNetwork()
         self.ha_api = HomeAssistantAPI(self.wireless)
+        self.ha_ws = HomeAssistantWebSocket(self.wireless)
 
     def startup(self):
         self.logger.info("HADash is starting up...")
@@ -26,6 +29,31 @@ class HADash:
         self.logger.info("Configuring buttons...")
         create_task(self.button1.wait_for_press())
         create_task(self.monitor_buttons())
+        create_task(self.monitor_ha_state_changes())
+
+    async def monitor_ha_state_changes(self):
+        self.logger.info("Starting HA WebSocket monitor...")
+        await self.ha_ws.listen_forever(self.handle_ha_event, event_type="state_changed")
+
+    async def handle_ha_event(self, message: dict):
+        if message.get("type") != "event":
+            return
+        event = message.get("event", {})
+        if event.get("event_type") != "state_changed":
+            return
+        data = event.get("data", {})
+        entity_id = data.get("entity_id")
+        new_state = data.get("new_state", {})
+        state_value = None
+        if isinstance(new_state, dict):
+            state_value = new_state.get("state")
+
+        if entity_id:
+            if state_value is not None:
+                self.logger.info(f"state_changed: {entity_id} -> {state_value}")
+            else:
+                self.logger.info(f"state_changed: {entity_id}")
+            create_task(self.status_led.async_flash(1,4))
 
     async def monitor_buttons(self):
         self.logger.info("Starting button monitor...")
