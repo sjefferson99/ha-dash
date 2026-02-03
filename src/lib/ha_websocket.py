@@ -173,6 +173,7 @@ class HomeAssistantWebSocket:
             try:
                 await self.connect()
                 await self.authenticate()
+                backoff = self.reconnect_initial_delay_s
                 if event_type is not None:
                     await self.subscribe_events(event_type)
                 listen_task = asyncio.create_task(self.listen(handler))
