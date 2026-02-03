@@ -160,18 +160,33 @@ class HomeAssistantWebSocket:
         """Reconnect forever and dispatch events to handler."""
         backoff = self.reconnect_initial_delay_s
         while True:
+            listen_task = None
+            keepalive_task = None
             try:
                 await self.connect()
                 await self.authenticate()
                 if event_type is not None:
                     await self.subscribe_events(event_type)
-                await asyncio.gather(
-                    self.listen(handler),
-                    self._keepalive_loop()
+                listen_task = asyncio.create_task(self.listen(handler))
+                keepalive_task = asyncio.create_task(self._keepalive_loop())
+
+                done, pending = await asyncio.wait(
+                    {listen_task, keepalive_task},
+                    return_when=asyncio.FIRST_EXCEPTION
                 )
+                for task in pending:
+                    task.cancel()
+                for task in done:
+                    exception = task.exception()
+                    if exception:
+                        raise exception
             except Exception as e:
                 self.log.warn(f"WebSocket error: {e}")
             finally:
+                if listen_task is not None and not listen_task.done():
+                    listen_task.cancel()
+                if keepalive_task is not None and not keepalive_task.done():
+                    keepalive_task.cancel()
                 await self.close()
 
             self.log.info(f"Reconnecting in {backoff}s")
