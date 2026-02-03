@@ -5,6 +5,7 @@ from json import loads, dumps
 from os import urandom
 from ubinascii import b2a_base64
 from utime import ticks_ms, ticks_diff
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union
 import asyncio
 try:
     import ssl
@@ -16,6 +17,12 @@ class HomeAssistantWebSocket:
     """
     Async WebSocket client for Home Assistant's /api/websocket endpoint.
     Includes keepalive ping/pong and auto-reconnect with backoff.
+
+    Note: Fragmented frames (FIN=0) are not supported; frames are assumed
+    to be complete in a single message.
+
+    TLS note: certificate verification is disabled (CERT_NONE) for simplicity
+    and performance on microcontrollers. This is insecure on untrusted networks.
     """
     def __init__(
         self,
@@ -26,6 +33,7 @@ class HomeAssistantWebSocket:
         reconnect_initial_delay_s: int = 1,
         reconnect_max_delay_s: int = 30
     ) -> None:
+        """Initialize the WebSocket client and keepalive settings."""
         self.log = uLogger("HA-WS")
         self.wifi = network
         self.host = HA_HOST
@@ -42,10 +50,12 @@ class HomeAssistantWebSocket:
         self.reconnect_max_delay_s = reconnect_max_delay_s
         self._last_pong_ms = ticks_ms()
 
-    def open(self) -> bool:
+    def is_open(self) -> bool:
+        """Return True when the socket is connected and usable."""
         return self.connected and self.writer is not None
 
     async def connect(self) -> None:
+        """Connect to Home Assistant via WS or WSS with fallback."""
         await self.wifi.check_network_access()
         last_error = None
         for use_ssl in (False, True):
@@ -62,6 +72,7 @@ class HomeAssistantWebSocket:
         raise last_error if last_error else ValueError("Failed to connect to WebSocket")
 
     async def _open_connection(self, use_ssl: bool) -> None:
+        """Open the socket and perform the WebSocket handshake."""
         if use_ssl:
             if ssl is None:
                 raise ValueError("HTTPS not supported - ssl module not available")
@@ -97,6 +108,7 @@ class HomeAssistantWebSocket:
                 break
 
     async def authenticate(self) -> None:
+        """Perform Home Assistant token authentication over WebSocket."""
         msg = await self.receive_json()
         if msg.get("type") == "auth_required":
             await self.send_json({"type": "auth", "access_token": self.token})
@@ -109,7 +121,8 @@ class HomeAssistantWebSocket:
         else:
             raise ValueError(f"Unexpected auth message: {msg}")
 
-    async def subscribe_events(self, event_type: str = None) -> int:
+    async def subscribe_events(self, event_type: Optional[str] = None) -> int:
+        """Subscribe to Home Assistant events and return the subscription id."""
         payload = {"id": self._message_id, "type": "subscribe_events"}
         if event_type:
             payload["event_type"] = event_type
@@ -118,11 +131,13 @@ class HomeAssistantWebSocket:
         self._message_id += 1
         return message_id
 
-    async def send_json(self, payload: dict) -> None:
+    async def send_json(self, payload: Dict[str, Any]) -> None:
+        """Send a JSON payload over the WebSocket connection."""
         data = dumps(payload)
         await self._send_frame(data)
 
-    async def receive_json(self) -> dict:
+    async def receive_json(self) -> Dict[str, Any]:
+        """Receive a JSON message and update activity time."""
         data = await self._read_text_frame()
         if not data:
             return {}
@@ -130,13 +145,19 @@ class HomeAssistantWebSocket:
         self._last_pong_ms = ticks_ms()
         return msg
 
-    async def listen(self, handler) -> None:
+    async def listen(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
+        """Continuously receive messages and invoke handler."""
         while True:
             msg = await self.receive_json()
             if msg:
                 await handler(msg)
 
-    async def listen_forever(self, handler, event_type: str = None) -> None:
+    async def listen_forever(
+        self,
+        handler: Callable[[Dict[str, Any]], Awaitable[None]],
+        event_type: Optional[str] = None
+    ) -> None:
+        """Reconnect forever and dispatch events to handler."""
         backoff = self.reconnect_initial_delay_s
         while True:
             try:
@@ -158,13 +179,27 @@ class HomeAssistantWebSocket:
             backoff = min(backoff * 2, self.reconnect_max_delay_s)
 
     async def close(self) -> None:
+        """Close the WebSocket connection gracefully."""
         if self.writer:
             try:
                 await self._send_close()
             except Exception:
                 pass
             try:
-                await self.writer.aclose()
+                close_method = getattr(self.writer, "aclose", None)
+                if callable(close_method):
+                    result = close_method()
+                    if asyncio.iscoroutine(result):
+                        await result
+                else:
+                    close_method = getattr(self.writer, "close", None)
+                    if callable(close_method):
+                        close_method()
+                    wait_closed = getattr(self.writer, "wait_closed", None)
+                    if callable(wait_closed):
+                        result = wait_closed()
+                        if asyncio.iscoroutine(result):
+                            await result
             except Exception:
                 pass
         self.connected = False
@@ -172,7 +207,8 @@ class HomeAssistantWebSocket:
         self.writer = None
 
     async def _keepalive_loop(self) -> None:
-        while self.open():
+        """Send periodic pings and enforce a timeout window."""
+        while self.is_open():
             await asyncio.sleep(self.ping_interval_s)
             await self.send_json({"id": self._message_id, "type": "ping"})
             self._message_id += 1
@@ -180,9 +216,11 @@ class HomeAssistantWebSocket:
                 raise ValueError("WebSocket pong timeout")
 
     async def _send_close(self) -> None:
+        """Send a WebSocket close frame."""
         await self._send_frame(b"", opcode=0x8)
 
-    async def _send_frame(self, payload, opcode: int = 0x1) -> None:
+    async def _send_frame(self, payload: Union[str, bytes], opcode: int = 0x1) -> None:
+        """Encode and send a WebSocket frame with masking."""
         if not self.writer:
             raise ValueError("WebSocket not connected")
         if isinstance(payload, bytes):
@@ -217,15 +255,19 @@ class HomeAssistantWebSocket:
             await self.writer.awrite(masked)
 
     async def _read_exact(self, nbytes: int) -> bytes:
+        """Read exactly nbytes from the socket."""
         data = b""
         while len(data) < nbytes:
+            if self.reader is None:
+                raise ValueError("WebSocket not connected")
             chunk = await self.reader.read(nbytes - len(data))
             if not chunk:
                 raise ValueError("WebSocket connection closed")
             data += chunk
         return data
 
-    async def _read_frame(self) -> tuple:
+    async def _read_frame(self) -> Tuple[int, bytes]:
+        """Read a raw WebSocket frame and return (opcode, payload)."""
         if not self.reader:
             raise ValueError("WebSocket not connected")
 
@@ -256,6 +298,7 @@ class HomeAssistantWebSocket:
         return opcode, payload
 
     async def _read_text_frame(self) -> str:
+        """Read until a text frame is received, handling control frames."""
         while True:
             opcode, payload = await self._read_frame()
             if opcode == 0x8:

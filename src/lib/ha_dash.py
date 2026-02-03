@@ -6,9 +6,12 @@ from lib.ha_api import HomeAssistantAPI
 from lib.ha_websocket import HomeAssistantWebSocket
 from asyncio import sleep_ms, Event, create_task, get_event_loop
 from lib.utils import StatusLED
+from typing import Any, Dict
 
 class HADash:
-    def __init__(self):
+    """Main application class for the HA hardware dashboard."""
+    def __init__(self) -> None:
+        """Initialize buttons, networking, and HA API clients."""
         self.logger = uLogger("HADash")
         self.logger.info("HADash initialized")
         self.button1_event = Event()
@@ -18,24 +21,28 @@ class HADash:
         self.ha_api = HomeAssistantAPI(self.wireless)
         self.ha_ws = HomeAssistantWebSocket(self.wireless)
 
-    def startup(self):
+    def startup(self) -> None:
+        """Start background tasks and enter the event loop."""
         self.logger.info("HADash is starting up...")
         self.wireless.startup()
         self.configure_buttons()
         asyncio_loop = get_event_loop()
         asyncio_loop.run_forever()
 
-    def configure_buttons(self):
+    def configure_buttons(self) -> None:
+        """Create background tasks for buttons and HA event monitor."""
         self.logger.info("Configuring buttons...")
         create_task(self.button1.wait_for_press())
         create_task(self.monitor_buttons())
         create_task(self.monitor_ha_state_changes())
 
-    async def monitor_ha_state_changes(self):
+    async def monitor_ha_state_changes(self) -> None:
+        """Listen for HA state_changed events via WebSocket."""
         self.logger.info("Starting HA WebSocket monitor...")
         await self.ha_ws.listen_forever(self.handle_ha_event, event_type="state_changed")
 
-    async def handle_ha_event(self, message: dict):
+    async def handle_ha_event(self, message: Dict[str, Any]) -> None:
+        """Handle a Home Assistant event message."""
         if message.get("type") != "event":
             return
         event = message.get("event", {})
@@ -53,9 +60,10 @@ class HADash:
                 self.logger.info(f"state_changed: {entity_id} -> {state_value}")
             else:
                 self.logger.info(f"state_changed: {entity_id}")
-            create_task(self.status_led.async_flash(1,4))
+            create_task(self.status_led.async_flash(1, 4))
 
-    async def monitor_buttons(self):
+    async def monitor_buttons(self) -> None:
+        """Watch for button events and dispatch actions."""
         self.logger.info("Starting button monitor...")
         while True:
             await sleep_ms(20)
@@ -64,7 +72,7 @@ class HADash:
                 await self.button1_action()
                 self.button1_event.clear()
 
-    async def button1_action(self):
+    async def button1_action(self) -> None:
         """Toggle the configured Home Assistant light and log its new state."""
         self.logger.info("Button 1 action: Toggling HA light...")
         try:

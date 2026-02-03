@@ -12,6 +12,7 @@ class HomeAssistantAPI:
     Provides methods to interact with HA entities and services.
     """
     def __init__(self, network: WirelessNetwork) -> None:
+        """Initialize the REST API client with network and auth settings."""
         self.log = uLogger("HA-API")
         self.wifi = network
         # Store both HTTP and HTTPS variants using the same port
