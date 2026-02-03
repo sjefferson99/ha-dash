@@ -8,6 +8,8 @@ except ImportError:
 class ClientResponse:
     def __init__(self, reader):
         self.content = reader
+        self.status = 0
+        self.headers = []
 
     async def read(self, sz=-1):
         return await self.content.read(sz)
@@ -44,6 +46,21 @@ class ChunkedClientResponse(ClientResponse):
         return "<ChunkedClientResponse %d %s>" % (self.status, self.headers)
 
 
+async def _close_writer(writer):
+    close = getattr(writer, "aclose", None)
+    if callable(close):
+        result = close()
+        if callable(result):
+            await result()  # type: ignore
+        elif result is not None:
+            await result  # type: ignore
+        return
+    writer.close()
+    wait_closed = getattr(writer, "wait_closed", None)
+    if callable(wait_closed):
+        await wait_closed()  # type: ignore
+
+
 async def request_raw(method, url, headers=None, json_data: str = ""):
     try:
         proto, dummy, host, path = url.split("/", 3)
@@ -71,6 +88,7 @@ async def request_raw(method, url, headers=None, json_data: str = ""):
     
     # Open connection with or without SSL
     if use_ssl:
+        assert ssl is not None
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ssl_context.verify_mode = ssl.CERT_NONE  # Skip certificate verification for simplicity
         reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context)
@@ -92,14 +110,14 @@ async def request_raw(method, url, headers=None, json_data: str = ""):
         json_data
     )
     await writer.awrite(query.encode("latin-1"))
-    return reader
+    return reader, writer
 
 
 async def request(method, url, headers=None, json_data: str = ""):
     redir_cnt = 0
     while redir_cnt < 2:
-        reader = await request_raw(method, url, headers, json_data)
-        headers = []
+        reader, writer = await request_raw(method, url, headers, json_data)
+        response_headers = []
         sline = await reader.readline()
         sline = sline.split(None, 2)
         status = int(sline[1])
@@ -108,7 +126,7 @@ async def request(method, url, headers=None, json_data: str = ""):
             line = await reader.readline()
             if not line or line == b"\r\n":
                 break
-            headers.append(line)
+            response_headers.append(line)
             if line.startswith(b"Transfer-Encoding:"):
                 if b"chunked" in line:
                     chunked = True
@@ -117,7 +135,7 @@ async def request(method, url, headers=None, json_data: str = ""):
 
         if 301 <= status <= 303:
             redir_cnt += 1
-            await reader.aclose()
+            await _close_writer(writer)
             continue
         break
 
@@ -126,5 +144,5 @@ async def request(method, url, headers=None, json_data: str = ""):
     else:
         resp = ClientResponse(reader)
     resp.status = status
-    resp.headers = headers
+    resp.headers = response_headers
     return resp
