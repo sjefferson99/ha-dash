@@ -5,7 +5,6 @@ from json import loads, dumps
 from os import urandom
 from ubinascii import b2a_base64
 from utime import ticks_ms, ticks_diff
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union
 import asyncio
 try:
     import ssl
@@ -121,7 +120,7 @@ class HomeAssistantWebSocket:
         else:
             raise ValueError(f"Unexpected auth message: {msg}")
 
-    async def subscribe_events(self, event_type: Optional[str] = None) -> int:
+    async def subscribe_events(self, event_type: str | None = None) -> int:
         """Subscribe to Home Assistant events and return the subscription id."""
         payload = {"id": self._message_id, "type": "subscribe_events"}
         if event_type:
@@ -131,21 +130,22 @@ class HomeAssistantWebSocket:
         self._message_id += 1
         return message_id
 
-    async def send_json(self, payload: Dict[str, Any]) -> None:
+    async def send_json(self, payload) -> None:
         """Send a JSON payload over the WebSocket connection."""
         data = dumps(payload)
         await self._send_frame(data)
 
-    async def receive_json(self) -> Dict[str, Any]:
+    async def receive_json(self) -> dict:
         """Receive a JSON message and update activity time."""
         data = await self._read_text_frame()
         if not data:
             return {}
         msg = loads(data)
-        self._last_pong_ms = ticks_ms()
+        if msg.get("type") == "pong":
+            self._last_pong_ms = ticks_ms()
         return msg
 
-    async def listen(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]) -> None:
+    async def listen(self, handler) -> None:
         """Continuously receive messages and invoke handler."""
         while True:
             msg = await self.receive_json()
@@ -154,8 +154,8 @@ class HomeAssistantWebSocket:
 
     async def listen_forever(
         self,
-        handler: Callable[[Dict[str, Any]], Awaitable[None]],
-        event_type: Optional[str] = None
+        handler,
+        event_type: str | None = None
     ) -> None:
         """Reconnect forever and dispatch events to handler."""
         backoff = self.reconnect_initial_delay_s
@@ -169,17 +169,25 @@ class HomeAssistantWebSocket:
                     await self.subscribe_events(event_type)
                 listen_task = asyncio.create_task(self.listen(handler))
                 keepalive_task = asyncio.create_task(self._keepalive_loop())
+                while True:
+                    if listen_task.done() or keepalive_task.done():
+                        break
+                    await asyncio.sleep(0)
 
-                done, pending = await asyncio.wait(
-                    {listen_task, keepalive_task},
-                    return_when=asyncio.FIRST_EXCEPTION
-                )
-                for task in pending:
-                    task.cancel()
-                for task in done:
-                    exception = task.exception()
-                    if exception:
-                        raise exception
+                if listen_task.done():
+                    if not keepalive_task.done():
+                        keepalive_task.cancel()
+                    try:
+                        await listen_task
+                    except Exception as e:
+                        raise e
+                elif keepalive_task.done():
+                    if not listen_task.done():
+                        listen_task.cancel()
+                    try:
+                        await keepalive_task
+                    except Exception as e:
+                        raise e
             except Exception as e:
                 self.log.warn(f"WebSocket error: {e}")
             finally:
@@ -187,6 +195,16 @@ class HomeAssistantWebSocket:
                     listen_task.cancel()
                 if keepalive_task is not None and not keepalive_task.done():
                     keepalive_task.cancel()
+                if listen_task is not None:
+                    try:
+                        await listen_task
+                    except Exception:
+                        pass
+                if keepalive_task is not None:
+                    try:
+                        await keepalive_task
+                    except Exception:
+                        pass
                 await self.close()
 
             self.log.info(f"Reconnecting in {backoff}s")
@@ -224,17 +242,22 @@ class HomeAssistantWebSocket:
     async def _keepalive_loop(self) -> None:
         """Send periodic pings and enforce a timeout window."""
         while self.is_open():
-            await asyncio.sleep(self.ping_interval_s)
+            ping_sent_ms = ticks_ms()
             await self.send_json({"id": self._message_id, "type": "ping"})
             self._message_id += 1
-            if ticks_diff(ticks_ms(), self._last_pong_ms) > (self.pong_timeout_s * 1000):
-                raise ValueError("WebSocket pong timeout")
+            while self.is_open():
+                if ticks_diff(ticks_ms(), ping_sent_ms) > (self.pong_timeout_s * 1000):
+                    raise ValueError("WebSocket pong timeout")
+                if ticks_diff(self._last_pong_ms, ping_sent_ms) >= 0:
+                    break
+                await asyncio.sleep(0.1)
+            await asyncio.sleep(self.ping_interval_s)
 
     async def _send_close(self) -> None:
         """Send a WebSocket close frame."""
         await self._send_frame(b"", opcode=0x8)
 
-    async def _send_frame(self, payload: Union[str, bytes], opcode: int = 0x1) -> None:
+    async def _send_frame(self, payload, opcode: int = 0x1) -> None:
         """Encode and send a WebSocket frame with masking."""
         if not self.writer:
             raise ValueError("WebSocket not connected")
@@ -281,7 +304,7 @@ class HomeAssistantWebSocket:
             data += chunk
         return data
 
-    async def _read_frame(self) -> Tuple[int, bytes]:
+    async def _read_frame(self) -> tuple:
         """Read a raw WebSocket frame and return (opcode, payload)."""
         if not self.reader:
             raise ValueError("WebSocket not connected")
@@ -322,7 +345,6 @@ class HomeAssistantWebSocket:
                 await self._send_frame(payload, opcode=0xA)
                 continue
             if opcode == 0xA:
-                self._last_pong_ms = ticks_ms()
                 continue
             if opcode != 0x1:
                 continue

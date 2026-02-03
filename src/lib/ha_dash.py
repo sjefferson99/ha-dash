@@ -6,7 +6,6 @@ from lib.ha_api import HomeAssistantAPI
 from lib.ha_websocket import HomeAssistantWebSocket
 from asyncio import sleep_ms, Event, create_task, get_event_loop
 from lib.utils import StatusLED
-from typing import Any, Dict
 
 class HADash:
     """Main application class for the HA hardware dashboard."""
@@ -41,7 +40,7 @@ class HADash:
         self.logger.info("Starting HA WebSocket monitor...")
         await self.ha_ws.listen_forever(self.handle_ha_event, event_type="state_changed")
 
-    async def handle_ha_event(self, message: Dict[str, Any]) -> None:
+    async def handle_ha_event(self, message: dict) -> None:
         """Handle a Home Assistant event message."""
         if message.get("type") != "event":
             return
