@@ -77,39 +77,60 @@ class HomeAssistantWebSocket:
 
     async def _open_connection(self, use_ssl: bool) -> None:
         """Open the socket and perform the WebSocket handshake."""
-        if use_ssl:
-            if ssl is None:
-                raise ValueError("HTTPS not supported - ssl module not available")
-            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            ssl_context.verify_mode = ssl.CERT_NONE
-            self.reader, self.writer = await asyncio.open_connection(
-                self.host, self.port, ssl=ssl_context
-            )
-        else:
-            self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
+        reader = None
+        writer = None
+        try:
+            if use_ssl:
+                if ssl is None:
+                    raise ValueError("HTTPS not supported - ssl module not available")
+                ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                ssl_context.verify_mode = ssl.CERT_NONE
+                reader, writer = await asyncio.open_connection(
+                    self.host, self.port, ssl=ssl_context
+                )
+            else:
+                reader, writer = await asyncio.open_connection(self.host, self.port)
 
-        key = b2a_base64(urandom(16)).strip().decode()
-        request = (
-            "GET /api/websocket HTTP/1.1\r\n"
-            "Host: {}:{}\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            "Sec-WebSocket-Version: 13\r\n"
-            "Sec-WebSocket-Key: {}\r\n\r\n"
-        ).format(self.host, self.port, key)
-        await self.writer.awrite(request.encode("latin-1"))
+            key = b2a_base64(urandom(16)).strip().decode()
+            request = (
+                "GET /api/websocket HTTP/1.1\r\n"
+                "Host: {}:{}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                "Sec-WebSocket-Key: {}\r\n\r\n"
+            ).format(self.host, self.port, key)
+            await writer.awrite(request.encode("latin-1"))
 
-        status_line = await self.reader.readline()
-        if not status_line:
-            raise ValueError("No response from WebSocket server")
-        parts = status_line.split(None, 2)
-        if len(parts) < 2 or int(parts[1]) != 101:
-            raise ValueError(f"WebSocket upgrade failed: {status_line}")
+            status_line = await reader.readline()
+            if not status_line:
+                raise ValueError("No response from WebSocket server")
+            parts = status_line.split(None, 2)
+            if len(parts) < 2 or int(parts[1]) != 101:
+                raise ValueError(f"WebSocket upgrade failed: {status_line}")
 
-        while True:
-            line = await self.reader.readline()
-            if not line or line == b"\r\n":
-                break
+            while True:
+                line = await reader.readline()
+                if not line or line == b"\r\n":
+                    break
+
+            self.reader = reader
+            self.writer = writer
+        except Exception:
+            if writer is not None:
+                try:
+                    close_method = getattr(writer, "aclose", None)
+                    if callable(close_method):
+                        result = close_method()
+                        if asyncio.iscoroutine(result):
+                            await result
+                    else:
+                        close_method = getattr(writer, "close", None)
+                        if callable(close_method):
+                            close_method()
+                except Exception as e:
+                    self.log.warn(f"Error while closing failed WS connection: {e}")
+            raise
 
     async def authenticate(self) -> None:
         """Perform Home Assistant token authentication over WebSocket."""
@@ -131,9 +152,9 @@ class HomeAssistantWebSocket:
 
     async def subscribe_events(
         self,
-        event_type: str = None,
+        event_type: str | None = None,
         wait_for_result: bool = False,
-        timeout_s: int = None
+        timeout_s: int | None = None
     ) -> int:
         """Subscribe to Home Assistant events and return the subscription id."""
         payload = {"id": self._message_id, "type": "subscribe_events"}
@@ -148,7 +169,7 @@ class HomeAssistantWebSocket:
 
         return message_id
 
-    async def _wait_for_result(self, message_id: int, timeout_s: int = None) -> None:
+    async def _wait_for_result(self, message_id: int, timeout_s: int | None = None) -> None:
         """Wait for a matching Home Assistant result response."""
         if timeout_s is None:
             timeout_s = self.read_timeout_s
@@ -208,22 +229,30 @@ class HomeAssistantWebSocket:
                 while True:
                     if listen_task.done() or keepalive_task.done():
                         break
-                    await asyncio.sleep(0)
+                    await asyncio.sleep(0.05)
 
+                listen_exc = None
+                keepalive_exc = None
                 if listen_task.done():
-                    if not keepalive_task.done():
-                        keepalive_task.cancel()
                     try:
                         await listen_task
                     except Exception as e:
-                        raise e
-                elif keepalive_task.done():
-                    if not listen_task.done():
-                        listen_task.cancel()
+                        listen_exc = e
+                if keepalive_task.done():
                     try:
                         await keepalive_task
                     except Exception as e:
-                        raise e
+                        keepalive_exc = e
+
+                if not keepalive_task.done():
+                    keepalive_task.cancel()
+                if not listen_task.done():
+                    listen_task.cancel()
+
+                if listen_exc is not None:
+                    raise listen_exc
+                if keepalive_exc is not None:
+                    raise keepalive_exc
             except Exception as e:
                 self.log.warn(f"WebSocket error: {e}")
             finally:
@@ -332,6 +361,7 @@ class HomeAssistantWebSocket:
         """Read exactly nbytes from the socket with a timeout."""
         data = b""
         start_ms = ticks_ms()
+        empty_reads = 0
         while len(data) < nbytes:
             if self.reader is None:
                 raise ValueError("WebSocket not connected")
@@ -339,8 +369,13 @@ class HomeAssistantWebSocket:
             if not chunk:
                 if ticks_diff(ticks_ms(), start_ms) > (self.read_timeout_s * 1000):
                     raise ValueError("WebSocket read timeout")
-                await asyncio.sleep(0.05)
+                empty_reads += 1
+                sleep_time = 0.05 * empty_reads
+                if sleep_time > 0.5:
+                    sleep_time = 0.5
+                await asyncio.sleep(sleep_time)
                 continue
+            empty_reads = 0
             data += chunk
         return data
 

@@ -178,6 +178,5 @@ class HomeAssistantAPI:
         
         # If we get here, all attempts failed
         self.log.error("Failed to call HA API with all protocol attempts")
-        raise last_error if last_error else ValueError("Failed to connect to HA API")
-        
         gc.collect()
+        raise last_error if last_error else ValueError("Failed to connect to HA API")
