@@ -12,6 +12,7 @@ class HomeAssistantAPI:
     Provides methods to interact with HA entities and services.
     """
     def __init__(self, network: WirelessNetwork) -> None:
+        """Initialize the REST API client with network and auth settings."""
         self.log = uLogger("HA-API")
         self.wifi = network
         # Store both HTTP and HTTPS variants using the same port
@@ -35,7 +36,7 @@ class HomeAssistantAPI:
         url = f"{self.base_url}states/{entity_id}"
         return await self._make_request("GET", url)
     
-    async def set_state(self, entity_id: str, state: str, attributes: dict = None) -> dict:
+    async def set_state(self, entity_id: str, state: str, attributes: dict | None = None) -> dict:
         """
         Set the state of a Home Assistant entity.
         Note: This updates the state in HA's state machine but doesn't trigger device actions.
@@ -53,7 +54,7 @@ class HomeAssistantAPI:
         json_data = dumps({"state": state, "attributes": attributes or {}})
         return await self._make_request("POST", url, json_data)
     
-    async def call_service(self, domain: str, service: str, entity_id: str = None, **kwargs) -> dict:
+    async def call_service(self, domain: str, service: str, entity_id: str | None = None, **kwargs) -> dict:
         """
         Call a Home Assistant service.
         
@@ -148,7 +149,8 @@ class HomeAssistantAPI:
                 }
                 
                 request = await httpclient.request(method, attempt_url, headers=headers, json_data=json_data)
-                self.log.info(f"Request status: {request.status}")
+                status = getattr(request, "status", None)
+                self.log.info(f"Request status: {status}")
                 
                 response = await request.read()
                 self.log.info(f"Response data: {response}")
@@ -158,7 +160,7 @@ class HomeAssistantAPI:
                     data = loads(response)
                     self.log.info(f"Parsed JSON: {data}")
                 
-                if request.status >= 200 and request.status < 300:
+                if status is not None and 200 <= status < 300:
                     # Success! Confirm this protocol for future requests
                     if not self.protocol_confirmed:
                         self.base_url = attempt_url.split('/api/')[0] + '/api/'
@@ -167,7 +169,7 @@ class HomeAssistantAPI:
                     self.log.info("HA API request successful")
                     return data
                 else:
-                    raise ValueError(f"HA API error: Status {request.status}, Response: {response}")
+                    raise ValueError(f"HA API error: Status {status}, Response: {response}")
                     
             except Exception as e:
                 self.log.warn(f"Failed to call HA API: {attempt_url}. Exception: {e}")
@@ -175,7 +177,6 @@ class HomeAssistantAPI:
                 continue
         
         # If we get here, all attempts failed
-        self.log.error(f"Failed to call HA API with all protocol attempts")
-        raise last_error if last_error else ValueError("Failed to connect to HA API")
-        
+        self.log.error("Failed to call HA API with all protocol attempts")
         gc.collect()
+        raise last_error if last_error else ValueError("Failed to connect to HA API")

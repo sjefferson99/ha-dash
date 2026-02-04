@@ -8,6 +8,7 @@ HA-Dash is a Pico-powered physical dashboard for Home Assistant. It connects ove
 - Wi‑Fi connectivity for Home Assistant API access - see [Onboard status LED](#onboard-status-led)
 - Async event loop for responsive, non-blocking IO
 - Extensible `ha_api` abstraction for Home Assistant actions
+- WebSocket event stream for HA `state_changed` updates
 - Core `ha_dash` class for button watchers and other GPIO event handlers
 - Simple configuration via `src/config.py`
 
