@@ -30,6 +30,8 @@ class HomeAssistantWebSocket:
         ping_interval_s: int = 30,
         pong_timeout_s: int = 10,
         read_timeout_s: int = 10,
+        listen_timeout_s: int = 30,
+        poll_interval_s: float = 0.05,
         reconnect_initial_delay_s: int = 1,
         reconnect_max_delay_s: int = 30
     ) -> None:
@@ -50,6 +52,8 @@ class HomeAssistantWebSocket:
         self.ping_interval_s = ping_interval_s
         self.pong_timeout_s = pong_timeout_s
         self.read_timeout_s = read_timeout_s
+        self.listen_timeout_s = listen_timeout_s
+        self.poll_interval_s = poll_interval_s
         self.reconnect_initial_delay_s = reconnect_initial_delay_s
         self.reconnect_max_delay_s = reconnect_max_delay_s
         self._last_pong_ms = ticks_ms()
@@ -152,11 +156,14 @@ class HomeAssistantWebSocket:
 
     async def subscribe_events(
         self,
-        event_type: str | None = None,
+        event_type: str = None,
         wait_for_result: bool = False,
-        timeout_s: int | None = None
+        timeout_s: int = None
     ) -> int:
-        """Subscribe to Home Assistant events and return the subscription id."""
+        """Subscribe to Home Assistant events and return the subscription id.
+
+        Use wait_for_result=True to validate the HA subscription response.
+        """
         payload = {"id": self._message_id, "type": "subscribe_events"}
         if event_type:
             payload["event_type"] = event_type
@@ -169,7 +176,7 @@ class HomeAssistantWebSocket:
 
         return message_id
 
-    async def _wait_for_result(self, message_id: int, timeout_s: int | None = None) -> None:
+    async def _wait_for_result(self, message_id: int, timeout_s: int = None) -> None:
         """Wait for a matching Home Assistant result response."""
         if timeout_s is None:
             timeout_s = self.read_timeout_s
@@ -202,16 +209,21 @@ class HomeAssistantWebSocket:
 
     async def listen(self, handler) -> None:
         """Continuously receive messages and invoke handler."""
+        last_msg_ms = ticks_ms()
         while True:
             msg = await self.receive_json()
             if msg is None:
-                raise ValueError("WebSocket receive returned no data")
+                if ticks_diff(ticks_ms(), last_msg_ms) > (self.listen_timeout_s * 1000):
+                    raise ValueError("WebSocket listen timeout")
+                await asyncio.sleep(self.poll_interval_s)
+                continue
+            last_msg_ms = ticks_ms()
             await handler(msg)
 
     async def listen_forever(
         self,
         handler,
-        event_type: str | None = None
+        event_type: str = None
     ) -> None:
         """Reconnect forever and dispatch events to handler."""
         backoff = self.reconnect_initial_delay_s
@@ -229,7 +241,7 @@ class HomeAssistantWebSocket:
                 while True:
                     if listen_task.done() or keepalive_task.done():
                         break
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(self.poll_interval_s)
 
                 listen_exc = None
                 keepalive_exc = None
@@ -309,13 +321,13 @@ class HomeAssistantWebSocket:
         while self.is_open():
             ping_sent_ms = ticks_ms()
             await self.send_json({"id": self._message_id, "type": "ping"})
-            self._message_id += 1
+            self._message_id = self._next_message_id()
             while self.is_open():
                 if ticks_diff(ticks_ms(), ping_sent_ms) > (self.pong_timeout_s * 1000):
                     raise ValueError("WebSocket pong timeout")
                 if ticks_diff(self._last_pong_ms, ping_sent_ms) >= 0:
                     break
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(self.poll_interval_s)
             await asyncio.sleep(self.ping_interval_s)
 
     async def _send_close(self) -> None:
@@ -356,6 +368,13 @@ class HomeAssistantWebSocket:
         await self.writer.awrite(header)
         if length:
             await self.writer.awrite(masked)
+
+    def _next_message_id(self) -> int:
+        """Return next message id, wrapping to avoid unbounded growth."""
+        next_id = self._message_id + 1
+        if next_id > 2000000000:
+            next_id = 1
+        return next_id
 
     async def _read_exact(self, nbytes: int) -> bytes:
         """Read exactly nbytes from the socket with a timeout."""
