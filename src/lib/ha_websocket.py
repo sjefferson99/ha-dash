@@ -252,8 +252,8 @@ class HomeAssistantWebSocket:
         if self.writer:
             try:
                 await self._send_close()
-            except Exception:
-                pass
+            except Exception as e:
+                self.log.warn(f"Error while sending WebSocket close frame: {e}")
             try:
                 close_method = getattr(self.writer, "aclose", None)
                 if callable(close_method):
@@ -269,8 +269,8 @@ class HomeAssistantWebSocket:
                         result = wait_closed()
                         if asyncio.iscoroutine(result):
                             await result
-            except Exception:
-                pass
+            except Exception as e:
+                self.log.warn(f"Error while closing WebSocket writer: {e}")
         self.connected = False
         self.reader = None
         self.writer = None
