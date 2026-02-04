@@ -50,10 +50,12 @@ async def _close_writer(writer):
     close = getattr(writer, "aclose", None)
     if callable(close):
         result = close()
-        if callable(result):
-            await result()  # type: ignore
-        elif result is not None:
-            await result  # type: ignore
+        if result is not None:
+            try:
+                await result  # type: ignore
+            except TypeError:
+                if callable(result):
+                    await result()  # type: ignore
         return
     writer.close()
     wait_closed = getattr(writer, "wait_closed", None)
