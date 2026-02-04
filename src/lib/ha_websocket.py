@@ -129,7 +129,12 @@ class HomeAssistantWebSocket:
         else:
             raise ValueError(f"Unexpected auth message: {msg}")
 
-    async def subscribe_events(self, event_type: str | None = None) -> int:
+    async def subscribe_events(
+        self,
+        event_type: str = None,
+        wait_for_result: bool = False,
+        timeout_s: int = None
+    ) -> int:
         """Subscribe to Home Assistant events and return the subscription id."""
         payload = {"id": self._message_id, "type": "subscribe_events"}
         if event_type:
@@ -137,7 +142,27 @@ class HomeAssistantWebSocket:
         await self.send_json(payload)
         message_id = self._message_id
         self._message_id += 1
+
+        if wait_for_result:
+            await self._wait_for_result(message_id, timeout_s)
+
         return message_id
+
+    async def _wait_for_result(self, message_id: int, timeout_s: int = None) -> None:
+        """Wait for a matching Home Assistant result response."""
+        if timeout_s is None:
+            timeout_s = self.read_timeout_s
+        start_ms = ticks_ms()
+        while True:
+            if ticks_diff(ticks_ms(), start_ms) > (timeout_s * 1000):
+                raise ValueError("Timed out waiting for subscribe_events result")
+            msg = await self.receive_json()
+            if msg is None:
+                continue
+            if msg.get("type") == "result" and msg.get("id") == message_id:
+                if not msg.get("success", False):
+                    raise ValueError(f"subscribe_events failed: {msg}")
+                return
 
     async def send_json(self, payload) -> None:
         """Send a JSON payload over the WebSocket connection."""
@@ -177,7 +202,7 @@ class HomeAssistantWebSocket:
                 await self.authenticate()
                 backoff = self.reconnect_initial_delay_s
                 if event_type is not None:
-                    await self.subscribe_events(event_type)
+                    await self.subscribe_events(event_type, wait_for_result=True)
                 listen_task = asyncio.create_task(self.listen(handler))
                 keepalive_task = asyncio.create_task(self._keepalive_loop())
                 while True:
