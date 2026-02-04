@@ -234,13 +234,13 @@ class HomeAssistantWebSocket:
                 if listen_task is not None:
                     try:
                         await listen_task
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.log.warn(f"Error while awaiting listen task cleanup: {e}")
                 if keepalive_task is not None:
                     try:
                         await keepalive_task
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.log.warn(f"Error while awaiting keepalive task cleanup: {e}")
                 await self.close()
 
             self.log.info(f"Reconnecting in {backoff}s")
