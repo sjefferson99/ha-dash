@@ -156,9 +156,9 @@ class HomeAssistantWebSocket:
 
     async def subscribe_events(
         self,
-        event_type: str = None,
+        event_type: str | None = None,
         wait_for_result: bool = False,
-        timeout_s: int = None
+        timeout_s: int = 10
     ) -> int:
         """Subscribe to Home Assistant events and return the subscription id.
 
@@ -172,11 +172,13 @@ class HomeAssistantWebSocket:
         self._message_id += 1
 
         if wait_for_result:
+            if timeout_s is None:
+                timeout_s = self.read_timeout_s
             await self._wait_for_result(message_id, timeout_s)
 
         return message_id
 
-    async def _wait_for_result(self, message_id: int, timeout_s: int = None) -> None:
+    async def _wait_for_result(self, message_id: int, timeout_s: int = 10) -> None:
         """Wait for a matching Home Assistant result response."""
         if timeout_s is None:
             timeout_s = self.read_timeout_s
@@ -223,7 +225,7 @@ class HomeAssistantWebSocket:
     async def listen_forever(
         self,
         handler,
-        event_type: str = None
+        event_type: str | None = None
     ) -> None:
         """Reconnect forever and dispatch events to handler."""
         backoff = self.reconnect_initial_delay_s
