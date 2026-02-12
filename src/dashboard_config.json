@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "physical_layout": {
+    "leds": [
+      {
+        "id": "led1",
+        "name": "LED 1",
+        "pin": 14
+      }
+    ],
+    "buttons": [
+      {
+        "id": "btn1",
+        "name": "Button 1",
+        "pin": 15
+      }
+    ]
+  },
+  "pages": [
+    {
+      "name": "office",
+      "description": "Office dashboard with living room light control",
+      "mappings": [
+        {
+          "component_id": "led1",
+          "entity_id": "light.living_room"
+        },
+        {
+          "component_id": "btn1",
+          "entity_id": "light.living_room"
+        }
+      ]
+    }
+  ],
+  "default_page": "office"
+}

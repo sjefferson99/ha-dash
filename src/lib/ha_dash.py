@@ -1,11 +1,12 @@
 from lib.ulogging import uLogger
-from config import BUTTON1_PIN, BUTTON1_ENTITY, LED1_PIN, LED1_ENTITY
 from lib.networking import WirelessNetwork
-from lib.button import Button
 from lib.ha_api import HomeAssistantAPI
 from lib.ha_websocket import HomeAssistantWebSocket
-from asyncio import sleep_ms, Event, create_task, get_event_loop
+from asyncio import create_task, get_event_loop
 from lib.utils import StatusLED
+from lib.event_handler import EventHandler
+from lib.dashboard_config import DashboardConfig
+from lib.ha_button import HAButton
 
 class HADash:
     """Main application class for the HA hardware dashboard."""
@@ -13,13 +14,68 @@ class HADash:
         """Initialize buttons, networking, and HA API clients."""
         self.logger = uLogger("HADash")
         self.logger.info("HADash initialized")
-        self.button1_event = Event()
-        self.button1 = Button(BUTTON1_PIN, "Button1", self.button1_event)
         self.status_led = StatusLED()
         self._flash_task = None
         self.wireless = WirelessNetwork()
         self.ha_api = HomeAssistantAPI(self.wireless)
         self.ha_ws = HomeAssistantWebSocket(self.wireless)
+        
+        # Initialize event handler and dashboard pages
+        self.event_handler = EventHandler(self.ha_api)
+        self.physical_layout = None
+        self.ha_buttons = []  # List of HAButton instances
+        self._setup_pages()
+    
+    def _setup_pages(self) -> None:
+        """Configure dashboard pages with GPIO and entity mappings."""
+        try:
+            # Load configuration from JSON file
+            dash_config = DashboardConfig("dashboard_config.json")
+            dash_config.load()
+            
+            # Create physical layout from config
+            self.physical_layout = dash_config.create_physical_layout()
+            
+            # Create pages from configuration
+            pages = dash_config.create_pages(self.physical_layout)
+            
+            # Register all pages with the event handler
+            for page in pages:
+                self.event_handler.register_page(page)
+            
+            # Set the default page if specified
+            default_page = dash_config.get_default_page()
+            if default_page:
+                self.event_handler.set_current_page(default_page)
+            
+            # Create HAButton instances for all physical buttons
+            self._setup_buttons()
+            
+            self.logger.info(f"Dashboard configured with {len(pages)} pages from JSON config")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load dashboard config: {e}")
+    
+    def _setup_buttons(self) -> None:
+        """Create HAButton instances for all buttons in physical layout."""
+        if not self.physical_layout:
+            self.logger.warn("No physical layout available for button setup")
+            return
+        
+        physical_buttons = self.physical_layout.get_all_buttons()
+        self.logger.info(f"Setting up {len(physical_buttons)} buttons from physical layout")
+        
+        for button_component in physical_buttons:
+            ha_button = HAButton(
+                button_component.id,
+                button_component.pin,
+                button_component.name,
+                self.event_handler,
+                self.ha_api
+            )
+            self.ha_buttons.append(ha_button)
+        
+        self.logger.info(f"Created {len(self.ha_buttons)} HAButton instances")
 
     def startup(self) -> None:
         """Start background tasks and enter the event loop."""
@@ -32,8 +88,14 @@ class HADash:
     def configure_buttons(self) -> None:
         """Create background tasks for buttons and HA event monitor."""
         self.logger.info("Configuring buttons...")
-        create_task(self.button1.wait_for_press())
-        create_task(self.monitor_buttons())
+        
+        # Start tasks for all HAButton instances
+        for ha_button in self.ha_buttons:
+            ha_button.start_tasks()
+        
+        self.logger.info(f"Started tasks for {len(self.ha_buttons)} buttons")
+        
+        # Start HA WebSocket monitor
         create_task(self.monitor_ha_state_changes())
 
     async def monitor_ha_state_changes(self) -> None:
@@ -61,37 +123,9 @@ class HADash:
             else:
                 self.logger.info(f"state_changed: {entity_id}")
             self.trigger_status_flash()
+            self.event_handler.handle_event(message)
 
     def trigger_status_flash(self) -> None:
         """Trigger a single LED flash without overlapping tasks."""
         if self._flash_task is None or self._flash_task.done():
-            self._flash_task = create_task(self.status_led.async_flash(1, 4))
-
-    async def monitor_buttons(self) -> None:
-        """Watch for button events and dispatch actions."""
-        self.logger.info("Starting button monitor...")
-        while True:
-            await sleep_ms(20)
-            if self.button1_event.is_set():
-                self.logger.info(f"{self.button1.get_name()} was pressed!")
-                await self.button1_action()
-                self.button1_event.clear()
-
-    async def button1_action(self) -> None:
-        """Toggle the configured Home Assistant light and log its new state."""
-        self.logger.info("Button 1 action: Toggling HA light...")
-        try:
-            # Toggle the light - service calls return array of states after action
-            result = await self.ha_api.toggle_light(BUTTON1_ENTITY)
-            self.logger.info(f"Light {BUTTON1_ENTITY} toggled successfully")
-            
-            # The result array contains the new states, extract if available
-            if isinstance(result, list) and len(result) > 0:
-                current_state = result[0].get('state', 'toggled')
-                self.logger.info(f"Light is now: {current_state}")
-            else:
-                self.logger.info("Light toggled (state not returned)")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to toggle light: {e}")
-        
+            self._flash_task = create_task(self.status_led.async_flash(1, 10))
