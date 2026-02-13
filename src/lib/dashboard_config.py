@@ -41,7 +41,7 @@ class DashboardConfig:
             self.logger.error(f"Failed to parse JSON config: {e}")
             raise
     
-    def save(self, config = None) -> None:
+    def save(self, config: dict | None = None) -> None:
         """
         Save configuration to JSON file.
         
@@ -66,7 +66,7 @@ class DashboardConfig:
             self.logger.error(f"Failed to write config file: {e}")
             raise
     
-    def create_physical_layout(self):
+    def create_physical_layout(self) -> PhysicalLayout:
         """
         Create PhysicalLayout instance from the loaded configuration.
         
@@ -195,7 +195,7 @@ class DashboardConfig:
         
         return pages
     
-    def get_default_page(self):
+    def get_default_page(self) -> str | None:
         """
         Get the default page name from configuration.
         

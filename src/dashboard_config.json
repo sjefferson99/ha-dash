@@ -28,12 +28,12 @@
       "mappings": [
         {
           "component_id": "led1",
-          "entity_id": "light.living_room"
+          "entity_id": "light.office"
         },
         {
           "component_id": "btn1",
           "action": "toggle_entity",
-          "entity_id": "light.living_room"
+          "entity_id": "light.office"
         },
         {
           "component_id": "btn_next",

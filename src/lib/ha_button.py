@@ -30,7 +30,7 @@ class HAButton:
         
         self.logger.info(f"HAButton '{component_id}' initialized on pin {pin}")
     
-    def get_button_action(self):
+    def get_button_action(self) -> dict | None:
         """
         Get the action configuration for this button on the current page.
         

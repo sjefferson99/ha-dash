@@ -167,7 +167,7 @@ class DashPage:
         
         return list(entities)
     
-    def get_action_for_button(self, component_id: str):
+    def get_action_for_button(self, component_id: str) -> dict | None:
         """
         Get the action configuration for a button on this page.
         

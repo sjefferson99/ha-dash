@@ -59,7 +59,7 @@ class PhysicalLayout:
         
         self.logger.info(f"Registered {component_type} '{component_id}' ({name}) on pin {pin_number}")
     
-    def get_component(self, component_id: str):
+    def get_component(self, component_id: str) -> PhysicalComponent | None:
         """
         Get a physical component by ID.
         
@@ -71,7 +71,7 @@ class PhysicalLayout:
         """
         return self.components.get(component_id)
     
-    def get_led(self, component_id: str):
+    def get_led(self, component_id: str) -> PhysicalComponent | None:
         """
         Get an LED component by ID.
         
@@ -86,7 +86,7 @@ class PhysicalLayout:
             return component
         return None
     
-    def get_button(self, component_id: str):
+    def get_button(self, component_id: str) -> PhysicalComponent | None:
         """
         Get a button component by ID.
         
