@@ -19,16 +19,10 @@ CUSTOM_HOSTNAME = None
 ## Freqyuency of NTP sync in seconds (minimum 60 seconds)
 NTP_SYNC_INTERVAL_SECONDS = 600
 
-## Button Configuration
-BUTTON1_PIN = 15
-LED1_PIN = 14
-
 ## Home Assistant Configuration
 HA_HOST = "192.168.1.100"  # Your Home Assistant IP address
 HA_PORT = "8123"
 HA_TOKEN = "your_long_lived_access_token_here"  # Create in HA Profile -> Security -> Long-Lived Access Tokens
-BUTTON1_ENTITY = "light.living_room"  # Replace with your actual entity_id
-LED1_ENTITY = "light.living_room"  # Replace with your actual entity_id
 
 ## Overclocking - Pico1 default 133MHz, Pico2 default 150MHz
 CLOCK_FREQUENCY = 133000000

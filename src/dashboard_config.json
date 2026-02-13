@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "physical_layout": {
+    "leds": [
+      {
+        "id": "led1",
+        "name": "LED 1",
+        "pin": 14
+      }
+    ],
+    "buttons": [
+      {
+        "id": "btn1",
+        "name": "Button 1",
+        "pin": 15
+      },
+      {
+        "id": "btn_next",
+        "name": "Next Dashboard Button",
+        "pin": 0
+      }
+    ]
+  },
+  "pages": [
+    {
+      "name": "office",
+      "description": "Office dashboard with room light control",
+      "mappings": [
+        {
+          "component_id": "led1",
+          "entity_id": "light.office"
+        },
+        {
+          "component_id": "btn1",
+          "action": "toggle_entity",
+          "entity_id": "light.office"
+        },
+        {
+          "component_id": "btn_next",
+          "action": "next_dashboard"
+        }
+      ]
+    },
+    {
+      "name": "bedroom",
+      "description": "Bedroom dashboard with room light control",
+      "mappings": [
+        {
+          "component_id": "led1",
+          "entity_id": "light.bedroom"
+        },
+        {
+          "component_id": "btn1",
+          "action": "toggle_entity",
+          "entity_id": "light.bedroom"
+        },
+        {
+          "component_id": "btn_next",
+          "action": "next_dashboard"
+        }
+      ]
+    }
+  ],
+  "default_page": "office"
+}
