@@ -182,15 +182,17 @@ class DashPage:
             return button_config.get("action")
         return None
     
-    async def resync(self, ha_api) -> None:
+    async def resync(self, ha_api, update_physical: bool = True) -> None:
         """
         Resynchronize all entities on this page with current Home Assistant states.
         Fetches the current state of each registered entity and updates the LED states.
         
         Args:
             ha_api: HomeAssistantAPI instance for fetching states
+            update_physical: If True, update physical LEDs; if False, only update virtual state
         """
-        self.logger.info(f"Resyncing page '{self.name}' with Home Assistant")
+        mode = "physical+virtual" if update_physical else "virtual only"
+        self.logger.info(f"Resyncing page '{self.name}' with Home Assistant ({mode})")
         synced_count = 0
         failed_count = 0
         
@@ -204,8 +206,8 @@ class DashPage:
                     state_value = state_data.get("state")
                     
                     if state_value:
-                        # Update both virtual and physical state
-                        self.update_led_state(entity_id, state_value, update_physical=True)
+                        # Update virtual state (and optionally physical)
+                        self.update_led_state(entity_id, state_value, update_physical=update_physical)
                         synced_count += 1
                     else:
                         self.logger.warn(f"No state value in response for {entity_id}")

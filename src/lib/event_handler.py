@@ -128,14 +128,24 @@ class EventHandler:
         """
         Resynchronize all pages with current Home Assistant states.
         This should be called on startup to ensure all pages have initial states.
+        
+        Updates virtual state on all pages, then syncs physical LEDs to the current page.
+        This prevents pages with shared physical LEDs from overwriting each other.
         """
         self.logger.info(f"Resyncing all {len(self.pages)} pages with Home Assistant")
         
+        # Update virtual state on all pages (don't touch physical LEDs yet)
         for page_name, page in self.pages.items():
             try:
-                await page.resync(self.ha_api)
+                await page.resync(self.ha_api, update_physical=False)
             except Exception as e:
                 self.logger.error(f"Failed to resync page '{page_name}': {e}")
+        
+        # Now sync physical LEDs to match the current page's virtual state
+        current_page = self.get_current_page()
+        if current_page:
+            self.logger.info(f"Syncing physical LEDs to current page: {current_page.name}")
+            current_page.sync_physical_to_virtual()
         
         self.logger.info("All pages resync complete")
     
