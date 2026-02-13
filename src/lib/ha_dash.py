@@ -2,7 +2,7 @@ from lib.ulogging import uLogger
 from lib.networking import WirelessNetwork
 from lib.ha_api import HomeAssistantAPI
 from lib.ha_websocket import HomeAssistantWebSocket
-from asyncio import create_task, get_event_loop
+from asyncio import create_task, get_event_loop, sleep
 from lib.utils import StatusLED
 from lib.event_handler import EventHandler
 from lib.dashboard_config import DashboardConfig
@@ -103,13 +103,44 @@ class HADash:
         
         self.logger.info(f"Started tasks for {len(self.ha_buttons)} buttons")
         
-        # Start HA WebSocket monitor
+        # Start HA WebSocket monitor (begins listening immediately to avoid missing events)
         create_task(self.monitor_ha_state_changes())
+        
+        # Start initial state sync (runs after WebSocket is connected)
+        create_task(self.initial_state_sync())
 
     async def monitor_ha_state_changes(self) -> None:
         """Listen for HA state_changed events via WebSocket."""
         self.logger.info("Starting HA WebSocket monitor...")
         await self.ha_ws.listen_forever(self.handle_ha_event, event_type="state_changed")
+    
+    async def initial_state_sync(self) -> None:
+        """
+        Perform initial state synchronization after WebSocket is connected.
+        
+        This runs after the WebSocket listener starts to avoid race conditions where
+        state changes could be missed during sync. Any duplicate updates from events
+        received during sync are harmless.
+        """
+        # Wait for WebSocket to establish connection and subscription
+        max_wait_seconds = 15
+        wait_interval = 0.5
+        elapsed = 0
+        
+        self.logger.info("Waiting for WebSocket connection before initial sync...")
+        while not self.ha_ws.is_open() and elapsed < max_wait_seconds:
+            await sleep(wait_interval)
+            elapsed += wait_interval
+        
+        if not self.ha_ws.is_open():
+            self.logger.error("WebSocket not connected after waiting, initial sync may fail")
+        else:
+            # Give it a bit more time to complete subscription
+            await sleep(1)
+            self.logger.info("WebSocket connected, starting initial state sync...")
+        
+        await self.event_handler.resync_all_pages()
+        self.logger.info("Initial state sync complete")
 
     async def handle_ha_event(self, message: dict) -> None:
         """Handle a Home Assistant event message."""

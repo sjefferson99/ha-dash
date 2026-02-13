@@ -172,16 +172,12 @@ class HomeAssistantWebSocket:
         self._message_id += 1
 
         if wait_for_result:
-            if timeout_s is None:
-                timeout_s = self.read_timeout_s
             await self._wait_for_result(message_id, timeout_s)
 
         return message_id
 
     async def _wait_for_result(self, message_id: int, timeout_s: int = 10) -> None:
         """Wait for a matching Home Assistant result response."""
-        if timeout_s is None:
-            timeout_s = self.read_timeout_s
         start_ms = ticks_ms()
         while True:
             if ticks_diff(ticks_ms(), start_ms) > (timeout_s * 1000):

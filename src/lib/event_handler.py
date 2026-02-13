@@ -55,7 +55,7 @@ class EventHandler:
             self.logger.error(f"Page '{page_name}' not found")
             return False
     
-    def get_current_page(self):
+    def get_current_page(self) -> DashPage | None:
         """
         Get the currently active page.
         
@@ -115,14 +115,29 @@ class EventHandler:
         if pages_updated:
             self.logger.info(f"Updated {entity_id}: {state_value} on pages: {', '.join(pages_updated)}")
     
-    def resync_current_page(self) -> None:
+    async def resync_current_page(self) -> None:
         """Resynchronize the current page with Home Assistant states."""
         current_page = self.get_current_page()
         if current_page:
             self.logger.info(f"Resyncing current page: {current_page.name}")
-            current_page.resync(self.ha_api)
+            await current_page.resync(self.ha_api)
         else:
             self.logger.warn("No current page to resync")
+    
+    async def resync_all_pages(self) -> None:
+        """
+        Resynchronize all pages with current Home Assistant states.
+        This should be called on startup to ensure all pages have initial states.
+        """
+        self.logger.info(f"Resyncing all {len(self.pages)} pages with Home Assistant")
+        
+        for page_name, page in self.pages.items():
+            try:
+                await page.resync(self.ha_api)
+            except Exception as e:
+                self.logger.error(f"Failed to resync page '{page_name}': {e}")
+        
+        self.logger.info("All pages resync complete")
     
     def get_registered_entities(self) -> dict:
         """

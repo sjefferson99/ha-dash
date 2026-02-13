@@ -181,3 +181,41 @@ class DashPage:
         if button_config:
             return button_config.get("action")
         return None
+    
+    async def resync(self, ha_api) -> None:
+        """
+        Resynchronize all entities on this page with current Home Assistant states.
+        Fetches the current state of each registered entity and updates the LED states.
+        
+        Args:
+            ha_api: HomeAssistantAPI instance for fetching states
+        """
+        self.logger.info(f"Resyncing page '{self.name}' with Home Assistant")
+        synced_count = 0
+        failed_count = 0
+        
+        # Get all registered LED entities
+        for entity_id in self._entity_to_led.keys():
+            try:
+                # Fetch current state from Home Assistant
+                state_data = await ha_api.get_state(entity_id)
+                
+                if state_data and isinstance(state_data, dict):
+                    state_value = state_data.get("state")
+                    
+                    if state_value:
+                        # Update both virtual and physical state
+                        self.update_led_state(entity_id, state_value, update_physical=True)
+                        synced_count += 1
+                    else:
+                        self.logger.warn(f"No state value in response for {entity_id}")
+                        failed_count += 1
+                else:
+                    self.logger.warn(f"Invalid state data for {entity_id}")
+                    failed_count += 1
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to fetch state for {entity_id}: {e}")
+                failed_count += 1
+        
+        self.logger.info(f"Resync complete: {synced_count} updated, {failed_count} failed")
