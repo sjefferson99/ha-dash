@@ -74,7 +74,7 @@ class DashboardConfig:
             PhysicalLayout instance with all components registered
             
         Raises:
-            ValueError if configuration not loaded
+            ValueError: If configuration not loaded, or if duplicate component IDs or pins detected
         """
         if self.config is None:
             raise ValueError("Configuration not loaded. Call load() first.")
@@ -89,7 +89,11 @@ class DashboardConfig:
             pin = led_config.get("pin")
             
             if component_id and pin is not None:
-                layout.register_component(component_id, "led", pin, name)
+                try:
+                    layout.register_component(component_id, "led", pin, name)
+                except ValueError as e:
+                    # Re-raise with additional context about the config
+                    raise ValueError(f"Error in LED config {led_config}: {e}") from e
             else:
                 self.logger.warn(f"Invalid LED config: {led_config}")
         
@@ -100,7 +104,11 @@ class DashboardConfig:
             pin = button_config.get("pin")
             
             if component_id and pin is not None:
-                layout.register_component(component_id, "button", pin, name)
+                try:
+                    layout.register_component(component_id, "button", pin, name)
+                except ValueError as e:
+                    # Re-raise with additional context about the config
+                    raise ValueError(f"Error in button config {button_config}: {e}") from e
             else:
                 self.logger.warn(f"Invalid button config: {button_config}")
         

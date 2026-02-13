@@ -50,14 +50,57 @@ class PhysicalLayout:
             component_type: Type of component ("led" or "button")
             pin_number: GPIO pin number
             name: Human-readable name
+            
+        Raises:
+            ValueError: If component_id or pin_number already registered
         """
+        # Check for duplicate component ID
         if component_id in self.components:
-            self.logger.warn(f"Component '{component_id}' already registered, replacing")
+            existing = self.components[component_id]
+            raise ValueError(
+                f"Component ID '{component_id}' is already registered on pin {existing.pin}. "
+                f"Use deregister_component('{component_id}') before re-registering."
+            )
+        
+        # Check for duplicate pin number
+        for existing_id, existing_comp in self.components.items():
+            if existing_comp.pin == pin_number:
+                raise ValueError(
+                    f"Pin {pin_number} is already in use by component '{existing_id}' ({existing_comp.name}). "
+                    f"Use deregister_component('{existing_id}') to free the pin, or use a different pin."
+                )
         
         component = PhysicalComponent(component_id, component_type, pin_number, name)
         self.components[component_id] = component
         
         self.logger.info(f"Registered {component_type} '{component_id}' ({name}) on pin {pin_number}")
+    
+    def deregister_component(self, component_id: str) -> bool:
+        """
+        Remove a physical hardware component from the registry.
+        
+        Args:
+            component_id: The unique identifier of the component to remove
+            
+        Returns:
+            True if component was removed, False if not found
+        """
+        if component_id in self.components:
+            component = self.components[component_id]
+            
+            # Clean up GPIO if it's an LED
+            if component.type == "led" and component.pin_obj:
+                try:
+                    component.pin_obj.value(0)  # Turn off before removing
+                except Exception as e:
+                    self.logger.warn(f"Error turning off LED during deregister: {e}")
+            
+            del self.components[component_id]
+            self.logger.info(f"Deregistered {component.type} '{component_id}' from pin {component.pin}")
+            return True
+        else:
+            self.logger.warn(f"Component '{component_id}' not found for deregistration")
+            return False
     
     def get_component(self, component_id: str) -> PhysicalComponent | None:
         """
@@ -166,3 +209,30 @@ class PhysicalLayout:
             True if component exists, False otherwise
         """
         return component_id in self.components
+    
+    def pin_in_use(self, pin_number: int) -> bool:
+        """
+        Check if a GPIO pin is already in use.
+        
+        Args:
+            pin_number: The GPIO pin number to check
+            
+        Returns:
+            True if pin is in use, False otherwise
+        """
+        return any(comp.pin == pin_number for comp in self.components.values())
+    
+    def get_component_by_pin(self, pin_number: int) -> PhysicalComponent | None:
+        """
+        Get the component using a specific GPIO pin.
+        
+        Args:
+            pin_number: The GPIO pin number to look up
+            
+        Returns:
+            PhysicalComponent instance or None if pin not in use
+        """
+        for component in self.components.values():
+            if component.pin == pin_number:
+                return component
+        return None

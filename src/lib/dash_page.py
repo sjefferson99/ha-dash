@@ -96,7 +96,7 @@ class DashPage:
             return False
         
         # Store virtual state
-        new_state = (state.lower() == "on")
+        new_state = (str(state).lower() == "on")
         old_state = self._entity_states.get(entity_id)
         
         if old_state != new_state:
@@ -205,7 +205,7 @@ class DashPage:
                 if state_data and isinstance(state_data, dict):
                     state_value = state_data.get("state")
                     
-                    if state_value:
+                    if state_value is not None:
                         # Update virtual state (and optionally physical)
                         self.update_led_state(entity_id, state_value, update_physical=update_physical)
                         synced_count += 1
