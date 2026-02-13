@@ -20,7 +20,9 @@ class DashPage:
         
         # Entity to component mappings
         self._entity_to_led = {}     # {entity_id: component_id}
-        self._entity_to_button = {}  # {entity_id: component_id}
+        
+        # Button configurations
+        self._button_actions = {}  # {component_id: {"ha_button": HAButton, "action": {...}}}
         
         # Virtual state for entities (independent of physical state)
         self._entity_states = {}  # {entity_id: state_value}
@@ -43,21 +45,39 @@ class DashPage:
         self._entity_to_led[entity_id] = component_id
         self.logger.info(f"Mapped entity '{entity_id}' to LED '{component_id}'")
     
-    def register_button(self, component_id: str, entity_id: str) -> None:
+    def register_button(self, ha_button, action_config: dict) -> None:
         """
-        Map an entity to a button component.
+        Register a button on this page with its action configuration.
         
         Args:
-            component_id: Physical component ID from the layout database
-            entity_id: Home Assistant entity ID to control
+            ha_button: HAButton instance to register
+            action_config: Action configuration dictionary
+                          e.g., {"action": "toggle_entity", "entity_id": "light.living_room"}
+                          or {"action": "next_dashboard"}
         """
-        # Verify the component exists and is a button
-        if not self.physical_layout.get_button(component_id):
-            self.logger.error(f"Button component '{component_id}' not found in physical layout")
+        # Verify the component exists and is a button in physical layout
+        if not self.physical_layout.get_button(ha_button.component_id):
+            self.logger.error(f"Button component '{ha_button.component_id}' not found in physical layout")
             return
         
-        self._entity_to_button[entity_id] = component_id
-        self.logger.info(f"Mapped entity '{entity_id}' to button '{component_id}'")
+        action_type = action_config.get("action")
+        if not action_type:
+            self.logger.error("Button action configuration missing 'action' field")
+            return
+        
+        # Store both the HAButton reference and the action config
+        self._button_actions[ha_button.component_id] = {
+            "ha_button": ha_button,
+            "action": action_config
+        }
+        
+        if action_type == "toggle_entity":
+            entity_id = action_config.get("entity_id")
+            self.logger.info(f"Registered button '{ha_button.component_id}' to toggle entity '{entity_id}'")
+        elif action_type == "next_dashboard":
+            self.logger.info(f"Registered button '{ha_button.component_id}' for next_dashboard action")
+        else:
+            self.logger.warn(f"Unknown action type '{action_type}' for button '{ha_button.component_id}'")
     
     def update_led_state(self, entity_id: str, state: str, update_physical: bool = True) -> bool:
         """
@@ -116,7 +136,17 @@ class DashPage:
         Returns:
             True if the entity is registered for either LED or button
         """
-        return entity_id in self._entity_to_led or entity_id in self._entity_to_button
+        # Check LEDs
+        if entity_id in self._entity_to_led:
+            return True
+        
+        # Check button actions
+        for button_config in self._button_actions.values():
+            action = button_config.get("action", {})
+            if action.get("entity_id") == entity_id:
+                return True
+        
+        return False
     
     def get_registered_entities(self) -> list:
         """
@@ -127,21 +157,27 @@ class DashPage:
         """
         entities = set()
         entities.update(self._entity_to_led.keys())
-        entities.update(self._entity_to_button.keys())
+        
+        # Add entities from button actions on this page
+        for button_config in self._button_actions.values():
+            action = button_config.get("action", {})
+            entity_id = action.get("entity_id")
+            if entity_id:
+                entities.add(entity_id)
+        
         return list(entities)
     
-    def get_entity_for_button(self, component_id: str):
+    def get_action_for_button(self, component_id: str):
         """
-        Get the entity mapped to a button component.
+        Get the action configuration for a button on this page.
         
         Args:
-            component_id: The physical component ID
+            component_id: The physical component ID of the button
             
         Returns:
-            The entity ID mapped to this button, or None if not found
+            Action configuration dict or None if button not on this page
         """
-        # Reverse lookup: find entity_id where value is component_id
-        for entity_id, cid in self._entity_to_button.items():
-            if cid == component_id:
-                return entity_id
+        button_config = self._button_actions.get(component_id)
+        if button_config:
+            return button_config.get("action")
         return None

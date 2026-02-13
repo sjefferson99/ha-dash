@@ -13,13 +13,18 @@
         "id": "btn1",
         "name": "Button 1",
         "pin": 15
+      },
+      {
+        "id": "btn_next",
+        "name": "Next Dashboard Button",
+        "pin": 0
       }
     ]
   },
   "pages": [
     {
       "name": "office",
-      "description": "Office dashboard with living room light control",
+      "description": "Office dashboard with room light control",
       "mappings": [
         {
           "component_id": "led1",
@@ -27,7 +32,31 @@
         },
         {
           "component_id": "btn1",
+          "action": "toggle_entity",
           "entity_id": "light.living_room"
+        },
+        {
+          "component_id": "btn_next",
+          "action": "next_dashboard"
+        }
+      ]
+    },
+    {
+      "name": "bedroom",
+      "description": "Bedroom dashboard with room light control",
+      "mappings": [
+        {
+          "component_id": "led1",
+          "entity_id": "light.bedroom"
+        },
+        {
+          "component_id": "btn1",
+          "action": "toggle_entity",
+          "entity_id": "light.bedroom"
+        },
+        {
+          "component_id": "btn_next",
+          "action": "next_dashboard"
         }
       ]
     }

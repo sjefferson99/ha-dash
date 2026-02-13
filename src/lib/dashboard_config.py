@@ -107,12 +107,13 @@ class DashboardConfig:
         self.logger.info(f"Created physical layout with {len(layout.components)} components")
         return layout
     
-    def create_pages(self, physical_layout) -> list:
+    def create_pages(self, physical_layout, ha_buttons: dict) -> list:
         """
         Create DashPage objects from the loaded configuration.
         
         Args:
             physical_layout: PhysicalLayout instance to use for component lookups
+            ha_buttons: Dictionary of HAButton instances {component_id: HAButton}
         
         Returns:
             List of DashPage objects
@@ -140,10 +141,9 @@ class DashboardConfig:
             # Register component mappings
             for mapping in page_config.get("mappings", []):
                 component_id = mapping.get("component_id")
-                entity_id = mapping.get("entity_id")
                 
-                if not component_id or not entity_id:
-                    self.logger.warn(f"Invalid mapping on page '{name}': {mapping}")
+                if not component_id:
+                    self.logger.warn(f"Mapping missing component_id on page '{name}': {mapping}")
                     continue
                 
                 # Determine if this is an LED or button mapping
@@ -153,9 +153,40 @@ class DashboardConfig:
                     continue
                 
                 if component.type == "led":
+                    entity_id = mapping.get("entity_id")
+                    if not entity_id:
+                        self.logger.warn(f"LED mapping missing entity_id on page '{name}': {mapping}")
+                        continue
                     page.register_led(component_id, entity_id)
+                    
                 elif component.type == "button":
-                    page.register_button(component_id, entity_id)
+                    # Get the HAButton instance for this component
+                    ha_button = ha_buttons.get(component_id)
+                    if not ha_button:
+                        self.logger.warn(f"HAButton '{component_id}' not found for page '{name}'")
+                        continue
+                    
+                    # Build action configuration for this button on this page
+                    action = mapping.get("action", "toggle_entity")  # Default to toggle_entity for backward compatibility
+                    
+                    action_config = {"action": action}
+                    
+                    if action == "toggle_entity":
+                        entity_id = mapping.get("entity_id")
+                        if not entity_id:
+                            self.logger.warn(f"Button toggle_entity action missing entity_id on page '{name}': {mapping}")
+                            continue
+                        action_config["entity_id"] = entity_id
+                    elif action == "next_dashboard":
+                        # No additional config needed
+                        pass
+                    else:
+                        self.logger.warn(f"Unknown action '{action}' for button '{component_id}' on page '{name}'")
+                        continue
+                    
+                    # Register the HAButton with the page (page stores the action config)
+                    page.register_button(ha_button, action_config)
+                    
                 else:
                     self.logger.warn(f"Unknown component type '{component.type}' for '{component_id}'")
             

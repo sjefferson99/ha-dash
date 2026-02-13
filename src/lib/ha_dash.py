@@ -36,8 +36,11 @@ class HADash:
             # Create physical layout from config
             self.physical_layout = dash_config.create_physical_layout()
             
-            # Create pages from configuration
-            pages = dash_config.create_pages(self.physical_layout)
+            # Create HAButton instances for all physical buttons BEFORE pages
+            ha_buttons_dict = self._create_ha_buttons()
+            
+            # Create pages from configuration (will configure HAButtons for each page)
+            pages = dash_config.create_pages(self.physical_layout, ha_buttons_dict)
             
             # Register all pages with the event handler
             for page in pages:
@@ -48,22 +51,25 @@ class HADash:
             if default_page:
                 self.event_handler.set_current_page(default_page)
             
-            # Create HAButton instances for all physical buttons
-            self._setup_buttons()
-            
             self.logger.info(f"Dashboard configured with {len(pages)} pages from JSON config")
             
         except Exception as e:
             self.logger.error(f"Failed to load dashboard config: {e}")
     
-    def _setup_buttons(self) -> None:
-        """Create HAButton instances for all buttons in physical layout."""
+    def _create_ha_buttons(self) -> dict:
+        """
+        Create HAButton instances for all buttons in physical layout.
+        
+        Returns:
+            Dictionary mapping component_id to HAButton instance
+        """
         if not self.physical_layout:
             self.logger.warn("No physical layout available for button setup")
-            return
+            return {}
         
+        ha_buttons_dict = {}
         physical_buttons = self.physical_layout.get_all_buttons()
-        self.logger.info(f"Setting up {len(physical_buttons)} buttons from physical layout")
+        self.logger.info(f"Creating {len(physical_buttons)} HAButton instances from physical layout")
         
         for button_component in physical_buttons:
             ha_button = HAButton(
@@ -73,9 +79,11 @@ class HADash:
                 self.event_handler,
                 self.ha_api
             )
+            ha_buttons_dict[button_component.id] = ha_button
             self.ha_buttons.append(ha_button)
         
         self.logger.info(f"Created {len(self.ha_buttons)} HAButton instances")
+        return ha_buttons_dict
 
     def startup(self) -> None:
         """Start background tasks and enter the event loop."""
