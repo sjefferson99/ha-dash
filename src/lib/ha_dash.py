@@ -144,40 +144,44 @@ class HADash:
             await sleep(2)
             waited += 2
         
-        if self.ha_ws.is_open():
-            self.logger.info(f"WebSocket watchdog started (timeout: {watchdog_timeout_s}s)")
-        else:
+        if not self.ha_ws.is_open():
             self.logger.warn(f"WebSocket not open after {max_wait}s, starting watchdog anyway")
-            self.logger.info(f"WebSocket watchdog started (timeout: {watchdog_timeout_s}s)")
+
+        self.logger.info(f"WebSocket watchdog started (timeout: {watchdog_timeout_s}s)")
         
         while True:
-            await sleep(check_interval_s)
-            
-            time_since_last_event = ticks_diff(ticks_ms(), self._last_event_ms) / 1000
-            
-            if time_since_last_event > watchdog_timeout_s:
-                self.logger.error(f"WebSocket watchdog triggered: No events for {time_since_last_event:.0f}s")
-                self.logger.info("Forcing WebSocket restart via close...")
+            try:
+                await sleep(check_interval_s)
                 
-                try:
-                    # Force close the websocket to trigger reconnect
-                    await self.ha_ws.close()
-                    self._last_event_ms = ticks_ms()  # Reset timer
-                except Exception as e:
-                    self.logger.error(f"Error closing websocket in watchdog: {e}")
+                time_since_last_event = ticks_diff(ticks_ms(), self._last_event_ms) / 1000
                 
-                # If monitor task is stuck, cancel and recreate it
-                if self._ws_monitor_task and not self._ws_monitor_task.done():
-                    self.logger.warn("Cancelling stuck WebSocket monitor task")
-                    self._ws_monitor_task.cancel()
+                if time_since_last_event > watchdog_timeout_s:
+                    self.logger.error(f"WebSocket watchdog triggered: No events for {time_since_last_event:.0f}s")
+                    self.logger.info("Forcing WebSocket restart via close...")
+                    
                     try:
-                        await self._ws_monitor_task
+                        # Force close the websocket to trigger reconnect
+                        await self.ha_ws.close()
+                        self._last_event_ms = ticks_ms()  # Reset timer
                     except Exception as e:
-                        self.logger.warn(f"Error awaiting cancelled task: {e}")
-                
-                # Recreate monitor task
-                self._ws_monitor_task = create_task(self._websocket_monitor_with_watchdog())
-                self.logger.info("WebSocket monitor task recreated")
+                        self.logger.error(f"Error closing websocket in watchdog: {e}")
+                    
+                    # If monitor task is stuck, cancel and recreate it
+                    if self._ws_monitor_task and not self._ws_monitor_task.done():
+                        self.logger.warn("Cancelling stuck WebSocket monitor task")
+                        self._ws_monitor_task.cancel()
+                        try:
+                            await self._ws_monitor_task
+                        except Exception as e:
+                            self.logger.warn(f"Error awaiting cancelled task: {e}")
+                    
+                    # Recreate monitor task
+                    self._ws_monitor_task = create_task(self._websocket_monitor_with_watchdog())
+                    self.logger.info("WebSocket monitor task recreated")
+            except Exception as e:
+                self.logger.error(f"Error in watchdog loop: {e}")
+                # Brief delay before next check to avoid tight error loops
+                await sleep(5)
     
     async def initial_state_sync(self) -> None:
         """
