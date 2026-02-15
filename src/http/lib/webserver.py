@@ -38,20 +38,39 @@ class WebServer:
         @self.app.route('/')
         async def index(request):
             """Serve the main index.html page."""
-            self.logger.info("Serving index.html")
             return send_file(self.http_dir + 'index.html')
+        
+        @self.app.route('/favicon.ico')
+        async def favicon(request):
+            """Serve the favicon."""
+            return send_file(self.http_dir + 'img/ha_logo.png', content_type='image/png')
         
         @self.app.route('/css/<path:path>')
         async def css(request, path):
             """Serve CSS files."""
-            self.logger.info(f"Serving CSS: {path}")
             return send_file(self.http_dir + 'css/' + path)
         
         @self.app.route('/js/<path:path>')
         async def js(request, path):
             """Serve JavaScript files."""
-            self.logger.info(f"Serving JS: {path}")
             return send_file(self.http_dir + 'js/' + path)
+        
+        @self.app.route('/img/<path:path>')
+        async def img(request, path):
+            """Serve image files."""
+            # Determine content type based on extension
+            if path.endswith('.png'):
+                content_type = 'image/png'
+            elif path.endswith('.jpg') or path.endswith('.jpeg'):
+                content_type = 'image/jpeg'
+            elif path.endswith('.gif'):
+                content_type = 'image/gif'
+            elif path.endswith('.svg'):
+                content_type = 'image/svg+xml'
+            else:
+                content_type = 'application/octet-stream'
+            
+            return send_file(self.http_dir + 'img/' + path, content_type=content_type)
     
     def _register_error_handlers(self):
         """Register error handlers."""

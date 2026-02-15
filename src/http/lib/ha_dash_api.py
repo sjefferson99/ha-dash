@@ -32,27 +32,20 @@ class HADashAPI:
         async def api_status(request):
             """Get the current HA-Dash status."""
             self.logger.info("API: Get status")
-            return {
-                'status': 'running',
-                'version': '1.0.0'
-            }
+            return {'status': 'running', 'version': '1.0.0'}, 200, {'Content-Type': 'application/json'}
         
         @self.app.route('/api/config')
         async def api_get_config(request):
             """Get the current HA-Dash configuration."""
             self.logger.info("API: Get config")
             # TODO: Implement config retrieval
-            return {
-                'message': 'Configuration endpoint - coming soon'
-            }
+            return {'message': 'Configuration endpoint - coming soon'}, 200, {'Content-Type': 'application/json'}
         
         @self.app.route('/api/config', methods=['POST'])
         async def api_update_config(request):
             """Update the HA-Dash configuration."""
             self.logger.info("API: Update config")
             # TODO: Implement config update
-            return {
-                'message': 'Configuration update endpoint - coming soon'
-            }
+            return {'message': 'Configuration update endpoint - coming soon'}, 200, {'Content-Type': 'application/json'}
         
         self.logger.info("API routes registered")

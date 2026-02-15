@@ -102,11 +102,71 @@ main {
 
 .status-item .value {
     color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .status-running {
     color: var(--success-color) !important;
     font-weight: 600;
+}
+
+.status-success {
+    color: var(--success-color) !important;
+    font-weight: 600;
+}
+
+.status-error {
+    color: #f44336 !important;
+    font-weight: 600;
+}
+
+.status-error span {
+    color: #f44336;
+}
+
+.status-warning {
+    color: #ff9800 !important;
+    font-weight: 600;
+}
+
+.status-info {
+    color: var(--primary-color) !important;
+    font-weight: 600;
+}
+
+button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background-color 0.3s ease;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: var(--secondary-color);
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+.retry-button {
+    margin-left: 12px;
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    background-color: var(--primary-color);
+    vertical-align: middle;
+}
+
+.retry-button:hover {
+    background-color: var(--secondary-color);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 footer {

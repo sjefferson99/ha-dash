@@ -3,27 +3,41 @@
  * Handles loading status from the API and updating the UI
  */
 
-// Fetch status from API on page load
+// Fetch status from API on page load with retry logic
 async function loadStatus() {
+    const statusElement = document.getElementById('server-status');
+    const versionElement = document.getElementById('server-version');
+    
+    // Clear any existing content and show loading
+    if (statusElement) {
+        statusElement.textContent = 'Loading...';
+        statusElement.className = 'value';
+    }
+    if (versionElement) {
+        versionElement.textContent = 'Loading...';
+    }
+    
     try {
-        const response = await fetch('/api/status');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
+        // Use fetchJsonWithRetry with custom retry configuration
+        const data = await HADashUtils.fetchJsonWithRetry(
+            '/api/status',
+            {},
+            {
+                maxRetries: 3,
+                initialDelay: 1000,
+                maxDelay: 10000,
+                backoffMultiplier: 2,
+                onRetry: (attempt, delay) => {
+                    const retryMsg = HADashUtils.formatRetryMessage(attempt, delay);
+                    console.log('Status load failed, ' + retryMsg);
+                    HADashUtils.showStatus('server-status', retryMsg, 'warning');
+                }
+            }
+        );
         
         // Update the DOM with the received data
-        const statusElement = document.getElementById('server-status');
-        const versionElement = document.getElementById('server-version');
-        
         if (statusElement && data.status) {
-            statusElement.textContent = data.status;
-            // Add the status-running class if status is "running"
-            if (data.status === 'running') {
-                statusElement.classList.add('status-running');
-            }
+            HADashUtils.showStatus('server-status', data.status, data.status);
         }
         
         if (versionElement && data.version) {
@@ -33,15 +47,25 @@ async function loadStatus() {
         console.log('Status loaded successfully:', data);
         
     } catch (error) {
-        console.error('Failed to load status:', error);
+        console.error('Failed to load status after retries:', error);
         
-        // Update UI to show error state
-        const statusElement = document.getElementById('server-status');
-        const versionElement = document.getElementById('server-version');
-        
+        // Update UI to show error state with retry button
         if (statusElement) {
-            statusElement.textContent = 'Error';
-            statusElement.style.color = '#f44336';
+            // Clear existing content
+            statusElement.textContent = '';
+            statusElement.className = 'value status-error';
+            
+            // Create error text
+            const errorText = document.createElement('span');
+            errorText.textContent = 'Error';
+            statusElement.appendChild(errorText);
+            
+            // Create retry button
+            const retryButton = document.createElement('button');
+            retryButton.textContent = 'Retry';
+            retryButton.className = 'retry-button';
+            retryButton.onclick = () => loadStatus();
+            statusElement.appendChild(retryButton);
         }
         
         if (versionElement) {
@@ -49,6 +73,9 @@ async function loadStatus() {
         }
     }
 }
+
+// Make loadStatus available globally for debugging
+window.loadStatus = loadStatus;
 
 // Load status when the page is ready
 document.addEventListener('DOMContentLoaded', loadStatus);
