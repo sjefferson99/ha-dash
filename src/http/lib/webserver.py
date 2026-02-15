@@ -32,6 +32,30 @@ class WebServer:
         
         self.logger.info("Web server initialized")
     
+    def _is_safe_path(self, path):
+        """
+        Validate that a path is safe and doesn't contain directory traversal sequences.
+        
+        Args:
+            path: The path to validate
+            
+        Returns:
+            bool: True if path is safe, False otherwise
+        """
+        # Reject paths containing parent directory references
+        if '..' in path:
+            return False
+        
+        # Reject absolute paths
+        if path.startswith('/'):
+            return False
+        
+        # Reject paths with null bytes
+        if '\x00' in path:
+            return False
+        
+        return True
+    
     def _register_static_routes(self):
         """Register routes for serving static files."""
         
@@ -48,16 +72,23 @@ class WebServer:
         @self.app.route('/css/<path:path>')
         async def css(request, path):
             """Serve CSS files."""
+            if not self._is_safe_path(path):
+                return {'error': 'Invalid path'}, 400
             return send_file(self.http_dir + 'css/' + path)
         
         @self.app.route('/js/<path:path>')
         async def js(request, path):
             """Serve JavaScript files."""
+            if not self._is_safe_path(path):
+                return {'error': 'Invalid path'}, 400
             return send_file(self.http_dir + 'js/' + path)
         
         @self.app.route('/img/<path:path>')
         async def img(request, path):
             """Serve image files."""
+            if not self._is_safe_path(path):
+                return {'error': 'Invalid path'}, 400
+            
             # Determine content type based on extension
             if path.endswith('.png'):
                 content_type = 'image/png'
