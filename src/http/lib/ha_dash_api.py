@@ -7,11 +7,19 @@ status, and control operations.
 """
 from lib.ulogging import uLogger
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from webserver import WebServer
+
 
 class HADashAPI:
     """API endpoints for HA-Dash configuration and control."""
     
-    def __init__(self, web_server):
+    def __init__(self, web_server: 'WebServer') -> None:
         """
         Initialize the API with a reference to the web server.
         
@@ -24,7 +32,7 @@ class HADashAPI:
         
         self.logger.info("HA-Dash API initialized")
     
-    def register_routes(self):
+    def register_routes(self) -> None:
         """Register all API routes with the web server."""
         self.logger.info("Registering API routes...")
         

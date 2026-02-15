@@ -9,11 +9,16 @@ sys.path.insert(0, '/http/lib')
 from microdot.microdot import Microdot, send_file
 from lib.ulogging import uLogger
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:
+    TYPE_CHECKING = False
+
 
 class WebServer:
     """Web server for hosting the HA-Dash configuration interface."""
     
-    def __init__(self, http_dir="/http/"):
+    def __init__(self, http_dir: str = "/http/") -> None:
         """
         Initialize the web server.
         
@@ -32,7 +37,7 @@ class WebServer:
         
         self.logger.info("Web server initialized")
     
-    def _is_safe_path(self, path):
+    def _is_safe_path(self, path: str) -> bool:
         """
         Validate that a path is safe and doesn't contain directory traversal sequences.
         
@@ -56,7 +61,7 @@ class WebServer:
         
         return True
     
-    def _register_static_routes(self):
+    def _register_static_routes(self) -> None:
         """Register routes for serving static files."""
         
         @self.app.route('/')
@@ -103,7 +108,7 @@ class WebServer:
             
             return send_file(self.http_dir + 'img/' + path, content_type=content_type)
     
-    def _register_error_handlers(self):
+    def _register_error_handlers(self) -> None:
         """Register error handlers."""
         
         @self.app.errorhandler(404)
@@ -116,7 +121,7 @@ class WebServer:
             """Handle 500 errors."""
             return {'error': 'Internal server error'}, 500
     
-    def get_app(self):
+    def get_app(self) -> Microdot:
         """
         Get the Microdot app instance for registering additional routes.
         
@@ -125,7 +130,7 @@ class WebServer:
         """
         return self.app
     
-    async def start(self, host=None, port=None):
+    async def start(self, host: str | None = None, port: int | None = None) -> None:
         """
         Start the web server.
         
