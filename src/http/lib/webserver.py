@@ -12,7 +12,6 @@ try:
 except ImportError:
     TYPE_CHECKING = False
 
-
 class WebServer:
     """Web server for hosting the HA-Dash configuration interface."""
     
@@ -35,27 +34,119 @@ class WebServer:
         
         self.logger.info("Web server initialized")
     
+    def _url_decode(self, text: str) -> str:
+        """
+        Decode URL-encoded text to prevent encoded traversal sequences.
+        
+        Args:
+            text: URL-encoded text
+            
+        Returns:
+            str: Decoded text
+        """
+        # Handle multiple rounds of encoding
+        decoded = text
+        for _ in range(3):  # Limit iterations to prevent infinite loops
+            prev = decoded
+            result = []
+            i = 0
+            while i < len(decoded):
+                if decoded[i] == '%' and i + 2 < len(decoded):
+                    try:
+                        hex_chars = decoded[i+1:i+3]
+                        char_code = int(hex_chars, 16)
+                        result.append(chr(char_code))
+                        i += 3
+                    except (ValueError, OverflowError):
+                        result.append(decoded[i])
+                        i += 1
+                else:
+                    result.append(decoded[i])
+                    i += 1
+            decoded = ''.join(result)
+            # Stop if no more changes (fully decoded)
+            if decoded == prev:
+                break
+        return decoded
+    
+    def _normalize_path(self, path: str) -> str:
+        """
+        Normalize a path by resolving . and .. components.
+        
+        Args:
+            path: The path to normalize
+            
+        Returns:
+            str: Normalized path
+        """
+        # Split path into components
+        parts = path.replace('\\', '/').split('/')
+        normalized = []
+        
+        for part in parts:
+            if part == '.' or part == '':
+                # Skip current directory references and empty parts
+                continue
+            elif part == '..':
+                # Move up one directory if possible
+                if normalized:
+                    normalized.pop()
+            else:
+                # Normal path component
+                normalized.append(part)
+        
+        return '/'.join(normalized)
+    
     def _is_safe_path(self, path: str) -> bool:
         """
         Validate that a path is safe and doesn't contain directory traversal sequences.
+        Uses defense-in-depth approach with multiple validation layers.
         
         Args:
-            path: The path to validate
+            path: The path to validate (from URL route parameter)
             
         Returns:
             bool: True if path is safe, False otherwise
         """
-        # Reject paths containing parent directory references
-        if '..' in path:
-            return False
-        
-        # Reject absolute paths
-        if path.startswith('/'):
+        # Reject empty paths
+        if not path:
             return False
         
         # Reject paths with null bytes
         if '\x00' in path:
             return False
+        
+        # Reject absolute paths
+        if path.startswith('/') or (len(path) > 1 and path[1] == ':'):
+            return False
+        
+        # URL-decode the path to catch encoded traversal attempts
+        decoded_path = self._url_decode(path)
+        
+        # Check decoded path for null bytes again
+        if '\x00' in decoded_path:
+            return False
+        
+        # Normalize the path to resolve . and .. components
+        normalized = self._normalize_path(decoded_path)
+        
+        # After normalization, path should not be empty (would indicate traversal to root)
+        if not normalized:
+            return False
+        
+        # After normalization, path should not start with .. (would escape base directory)
+        if normalized.startswith('..'):
+            return False
+        
+        # Verify no .. components remain in the normalized path
+        if '..' in normalized.split('/'):
+            return False
+        
+        # Additional check: ensure path doesn't contain suspicious patterns
+        suspicious_patterns = ['..\\', '/../', '\\..', '../']
+        for pattern in suspicious_patterns:
+            if pattern in path or pattern in decoded_path:
+                return False
         
         return True
     
