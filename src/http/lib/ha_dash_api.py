@@ -14,21 +14,24 @@ except ImportError:
 
 if TYPE_CHECKING:
     from webserver import WebServer
+    from lib.ha_dash import HADash
 
 
 class HADashAPI:
     """API endpoints for HA-Dash configuration and control."""
     
-    def __init__(self, web_server: 'WebServer') -> None:
+    def __init__(self, web_server: 'WebServer', ha_dash: 'HADash') -> None:
         """
-        Initialize the API with a reference to the web server.
+        Initialize the API with references to the web server and main dashboard.
         
         Args:
             web_server: WebServer instance to register routes with
+            ha_dash: HADash instance for accessing dashboard state and configuration
         """
         self.logger = uLogger("HADashAPI")
         self.web_server = web_server
         self.app = web_server.get_app()
+        self.ha_dash = ha_dash
         
         self.logger.info("HA-Dash API initialized")
     

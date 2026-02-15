@@ -34,7 +34,7 @@ class HADash:
         
         # Initialize web server and API
         self.web_server = WebServer()
-        self.api = HADashAPI(self.web_server)
+        self.api = HADashAPI(self.web_server, self)
         self.api.register_routes()
         
         self._setup_pages()
