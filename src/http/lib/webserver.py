@@ -146,4 +146,4 @@ class WebServer:
             await self.app.start_server(host=self.host, port=self.port)
         except Exception as e:
             self.logger.error(f"Failed to start web server: {e}")
-            raise
+            # Don't re-raise - let the caller decide how to handle the failure

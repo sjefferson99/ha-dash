@@ -126,7 +126,26 @@ class HADash:
         create_task(self._websocket_watchdog())
         
         # Start web server for configuration interface
-        self._web_server_task = create_task(self._start_web_server())
+        self._web_server_task = create_task(self._start_web_server_with_recovery())
+
+    async def _start_web_server_with_recovery(self) -> None:
+        """Start web server with automatic recovery on failure."""
+        attempt = 0
+        retry_delay = 60  # Wait 60 seconds before retry
+        
+        while True:
+            attempt += 1
+            try:
+                self.logger.info(f"Starting web server (attempt {attempt})...")
+                await self._start_web_server()
+                # If we get here, server stopped unexpectedly
+                self.logger.warn("Web server stopped unexpectedly")
+            except Exception as e:
+                self.logger.error(f"Web server task failed with exception: {e}")
+            
+            # Wait before retry
+            self.logger.info(f"Will retry web server in {retry_delay}s...")
+            await sleep(retry_delay)
 
     async def _websocket_monitor_with_watchdog(self) -> None:
         """Listen for HA state_changed events via WebSocket with recovery wrapper."""
@@ -255,10 +274,5 @@ class HADash:
     
     async def _start_web_server(self) -> None:
         """Start the web server for the configuration interface."""
-        try:
-            self.logger.info("Starting web configuration server on port 80...")
-            await self.web_server.start(host='0.0.0.0', port=80)
-        except Exception as e:
-            self.logger.error(f"Failed to start web server: {e}")
-            # Log but don't crash - the dashboard can still work without the web interface
-            self.logger.warn("Dashboard will continue without web interface")
+        self.logger.info("Starting web configuration server on port 80...")
+        await self.web_server.start(host='0.0.0.0', port=80)
