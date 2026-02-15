@@ -10,6 +10,10 @@ try:
     import ssl
 except ImportError:
     ssl = None
+try:
+    import gc
+except ImportError:
+    gc = None
 
 
 class HomeAssistantWebSocket:
@@ -263,6 +267,11 @@ class HomeAssistantWebSocket:
                     raise listen_exc
                 if keepalive_exc is not None:
                     raise keepalive_exc
+            except MemoryError as e:
+                self.log.error(f"WebSocket memory error: {e}")
+                if gc is not None:
+                    gc.collect()
+                    self.log.info("Garbage collection triggered after memory error")
             except Exception as e:
                 self.log.warn(f"WebSocket error: {e}")
             finally:
