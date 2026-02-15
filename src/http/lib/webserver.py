@@ -4,9 +4,7 @@ HA-Dash Web Server
 This module provides the Microdot web server setup for hosting the HA-Dash
 configuration interface and API endpoints.
 """
-import sys
-sys.path.insert(0, '/http/lib')
-from microdot.microdot import Microdot, send_file
+from http.lib.microdot import Microdot, send_file
 from lib.ulogging import uLogger
 
 try:
