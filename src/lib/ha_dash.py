@@ -7,6 +7,8 @@ from lib.utils import StatusLED
 from lib.event_handler import EventHandler
 from lib.dashboard_config import DashboardConfig
 from lib.ha_button import HAButton
+from utime import ticks_ms, ticks_diff
+from config import WS_WATCHDOG_TIMEOUT_SECONDS
 
 class HADash:
     """Main application class for the HA hardware dashboard."""
@@ -24,6 +26,8 @@ class HADash:
         self.event_handler = EventHandler(self.ha_api)
         self.physical_layout = None
         self.ha_buttons = []  # List of HAButton instances
+        self._last_event_ms = ticks_ms()  # Track last event for watchdog
+        self._ws_monitor_task = None  # Track websocket monitor task
         self._setup_pages()
     
     def _setup_pages(self) -> None:
@@ -103,16 +107,81 @@ class HADash:
         
         self.logger.info(f"Started tasks for {len(self.ha_buttons)} buttons")
         
-        # Start HA WebSocket monitor (begins listening immediately to avoid missing events)
-        create_task(self.monitor_ha_state_changes())
+        # Start HA WebSocket monitor with watchdog (begins listening immediately to avoid missing events)
+        self._ws_monitor_task = create_task(self._websocket_monitor_with_watchdog())
         
         # Start initial state sync (runs after WebSocket is connected)
         create_task(self.initial_state_sync())
+        
+        # Start watchdog to monitor websocket health
+        create_task(self._websocket_watchdog())
 
-    async def monitor_ha_state_changes(self) -> None:
-        """Listen for HA state_changed events via WebSocket."""
-        self.logger.info("Starting HA WebSocket monitor...")
-        await self.ha_ws.listen_forever(self.handle_ha_event, event_type="state_changed")
+    async def _websocket_monitor_with_watchdog(self) -> None:
+        """Listen for HA state_changed events via WebSocket with recovery wrapper."""
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                self.logger.info(f"Starting HA WebSocket monitor (attempt {attempt})...")
+                await self.ha_ws.listen_forever(self.handle_ha_event, event_type="state_changed")
+                # If listen_forever exits (it shouldn't), log and restart
+                self.logger.error("WebSocket listen_forever unexpectedly exited, restarting...")
+            except Exception as e:
+                self.logger.error(f"Fatal error in WebSocket monitor: {e}")
+            # Brief delay before restarting
+            await sleep(2)
+    
+    async def _websocket_watchdog(self) -> None:
+        """Monitor websocket health and restart if no events received."""
+        watchdog_timeout_s = WS_WATCHDOG_TIMEOUT_SECONDS
+        check_interval_s = 60  # Check every minute
+        
+        # Wait for initial connection before starting watchdog
+        self.logger.info("Waiting for WebSocket connection before starting watchdog...")
+        max_wait = 60  # Maximum 60 seconds to wait for connection
+        waited = 0
+        while not self.ha_ws.is_open() and waited < max_wait:
+            await sleep(2)
+            waited += 2
+        
+        if not self.ha_ws.is_open():
+            self.logger.warn(f"WebSocket not open after {max_wait}s, starting watchdog anyway")
+
+        self.logger.info(f"WebSocket watchdog started (timeout: {watchdog_timeout_s}s)")
+        
+        while True:
+            try:
+                await sleep(check_interval_s)
+                
+                time_since_last_event = ticks_diff(ticks_ms(), self._last_event_ms) / 1000
+                
+                if time_since_last_event > watchdog_timeout_s:
+                    self.logger.error(f"WebSocket watchdog triggered: No events for {time_since_last_event:.0f}s")
+                    self.logger.info("Forcing WebSocket restart via close...")
+                    
+                    try:
+                        # Force close the websocket to trigger reconnect
+                        await self.ha_ws.close()
+                        self._last_event_ms = ticks_ms()  # Reset timer
+                    except Exception as e:
+                        self.logger.error(f"Error closing websocket in watchdog: {e}")
+                    
+                    # If monitor task is stuck, cancel and recreate it
+                    if self._ws_monitor_task and not self._ws_monitor_task.done():
+                        self.logger.warn("Cancelling stuck WebSocket monitor task")
+                        self._ws_monitor_task.cancel()
+                        try:
+                            await self._ws_monitor_task
+                        except Exception as e:
+                            self.logger.warn(f"Error awaiting cancelled task: {e}")
+                    
+                    # Recreate monitor task
+                    self._ws_monitor_task = create_task(self._websocket_monitor_with_watchdog())
+                    self.logger.info("WebSocket monitor task recreated")
+            except Exception as e:
+                self.logger.error(f"Error in watchdog loop: {e}")
+                # Brief delay before next check to avoid tight error loops
+                await sleep(5)
     
     async def initial_state_sync(self) -> None:
         """
@@ -144,6 +213,9 @@ class HADash:
 
     async def handle_ha_event(self, message: dict) -> None:
         """Handle a Home Assistant event message."""
+        # Update last event time for watchdog
+        self._last_event_ms = ticks_ms()
+        
         if message.get("type") != "event":
             return
         event = message.get("event", {})

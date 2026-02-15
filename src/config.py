@@ -24,5 +24,10 @@ HA_HOST = "192.168.1.100"  # Your Home Assistant IP address
 HA_PORT = "8123"
 HA_TOKEN = "your_long_lived_access_token_here"  # Create in HA Profile -> Security -> Long-Lived Access Tokens
 
+## WebSocket Watchdog
+# Number of seconds without receiving events before triggering a websocket restart
+# Set higher for environments with infrequent events (e.g., 600 for 10 minutes)
+WS_WATCHDOG_TIMEOUT_SECONDS = 300  # 5 minutes default
+
 ## Overclocking - Pico1 default 133MHz, Pico2 default 150MHz
 CLOCK_FREQUENCY = 133000000
