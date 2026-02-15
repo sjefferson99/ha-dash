@@ -46,6 +46,13 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
             lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
             
         } catch (error) {
+            // If this is a 4xx client error (indicated by HTTP 4xx in message), 
+            // throw immediately without retrying
+            if (error.message && error.message.startsWith('HTTP 4')) {
+                throw error;
+            }
+            
+            // For network errors (no response received), store and allow retry
             lastError = error;
             
             // Don't retry on the last attempt
