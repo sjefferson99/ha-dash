@@ -1,0 +1,148 @@
+/* HA-Dash Configurator Styles */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary-color: #2196F3;
+    --secondary-color: #1976D2;
+    --success-color: #4CAF50;
+    --background-color: #f5f5f5;
+    --card-background: #ffffff;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --border-color: #e0e0e0;
+    --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --shadow-hover: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    text-align: center;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    box-shadow: var(--shadow);
+}
+
+header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.subtitle {
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+
+main {
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.card {
+    background: var(--card-background);
+    border-radius: 8px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: var(--shadow-hover);
+}
+
+.card h2 {
+    font-size: 1.5rem;
+    margin-bottom: 16px;
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.card p {
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.status-item:last-child {
+    border-bottom: none;
+}
+
+.status-item .label {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.status-item .value {
+    color: var(--text-secondary);
+}
+
+.status-running {
+    color: var(--success-color) !important;
+    font-weight: 600;
+}
+
+footer {
+    text-align: center;
+    padding: 30px 20px;
+    margin-top: 40px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+footer a {
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+footer a:hover {
+    color: var(--secondary-color);
+    text-decoration: underline;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    header h1 {
+        font-size: 2rem;
+    }
+    
+    .container {
+        padding: 10px;
+    }
+    
+    header {
+        padding: 30px 15px;
+    }
+    
+    main {
+        grid-template-columns: 1fr;
+    }
+}
