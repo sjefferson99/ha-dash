@@ -13,6 +13,7 @@ HA-Dash is a Pico-powered physical dashboard for Home Assistant. It connects ove
 - **Virtual dashboard pages** – map the same physical buttons and LEDs to different Home Assistant entities
 - JSON-based configuration for physical layout and entity mappings
 - Simple network configuration via `src/config.py`
+- Web server for configuration management - under development
 
 ## Virtual Dashboard Pages
 
@@ -72,6 +73,10 @@ In this example, `btn1` toggles the office light on the first page and the bedro
 The codebase is structured around an async loop that drives IO without blocking. Home Assistant interactions are abstracted through an extensible `ha_api` layer, which keeps device logic decoupled from API specifics. The core `ha_dash` class provides registration and handling for button watchers and other GPIO events, which then call the abstracted API methods.
 
 ## Configuration
+
+### Web based configuration
+
+For now only the framework exists, however you can navigate to http://<ip/name-of-pico>:80 and see a test page.
 
 ### Home Assistant Token
 
