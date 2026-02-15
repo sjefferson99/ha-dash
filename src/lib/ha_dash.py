@@ -9,6 +9,8 @@ from lib.dashboard_config import DashboardConfig
 from lib.ha_button import HAButton
 from utime import ticks_ms, ticks_diff
 from config import WS_WATCHDOG_TIMEOUT_SECONDS
+from http.lib.webserver import WebServer
+from http.lib.ha_dash_api import HADashAPI
 
 class HADash:
     """Main application class for the HA hardware dashboard."""
@@ -28,6 +30,13 @@ class HADash:
         self.ha_buttons = []  # List of HAButton instances
         self._last_event_ms = ticks_ms()  # Track last event for watchdog
         self._ws_monitor_task = None  # Track websocket monitor task
+        self._web_server_task = None  # Track web server task
+        
+        # Initialize web server and API
+        self.web_server = WebServer()
+        self.api = HADashAPI(self.web_server, self)
+        self.api.register_routes()
+        
         self._setup_pages()
     
     def _setup_pages(self) -> None:
@@ -115,6 +124,28 @@ class HADash:
         
         # Start watchdog to monitor websocket health
         create_task(self._websocket_watchdog())
+        
+        # Start web server for configuration interface
+        self._web_server_task = create_task(self._start_web_server_with_recovery())
+
+    async def _start_web_server_with_recovery(self) -> None:
+        """Start web server with automatic recovery on failure."""
+        attempt = 0
+        retry_delay = 60  # Wait 60 seconds before retry
+        
+        while True:
+            attempt += 1
+            try:
+                self.logger.info(f"Starting web server (attempt {attempt})...")
+                await self._start_web_server()
+                # If we get here, server stopped unexpectedly
+                self.logger.warn("Web server stopped unexpectedly")
+            except Exception as e:
+                self.logger.error(f"Web server task failed with exception: {e}")
+            
+            # Wait before retry
+            self.logger.info(f"Will retry web server in {retry_delay}s...")
+            await sleep(retry_delay)
 
     async def _websocket_monitor_with_watchdog(self) -> None:
         """Listen for HA state_changed events via WebSocket with recovery wrapper."""
@@ -240,3 +271,8 @@ class HADash:
         """Trigger a single LED flash without overlapping tasks."""
         if self._flash_task is None or self._flash_task.done():
             self._flash_task = create_task(self.status_led.async_flash(1, 10))
+    
+    async def _start_web_server(self) -> None:
+        """Start the web server for the configuration interface."""
+        self.logger.info("Starting web configuration server on port 80...")
+        await self.web_server.start(host='0.0.0.0', port=80)

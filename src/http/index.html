@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HA-Dash Configurator</title>
+    <link rel="icon" type="image/png" href="/img/ha_logo.png">
+    <link rel="stylesheet" href="/css/styles.css">
+    <script src="/js/utils.js" defer></script>
+    <script src="/js/index.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>HA-Dash Configurator</h1>
+            <p class="subtitle">Configure your Home Assistant dashboard</p>
+        </header>
+        
+        <main>
+            <div class="card">
+                <h2>Welcome</h2>
+                <p>This is the HA-Dash configuration interface.</p>
+                <p>Use this tool to configure your physical button layout and virtual dashboard pages.</p>
+            </div>
+            
+            <div class="card">
+                <h2>System Status</h2>
+                <div class="status-item">
+                    <span class="label">Server Status:</span>
+                    <span id="server-status" class="value">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Version:</span>
+                    <span id="server-version" class="value">Loading...</span>
+                </div>
+            </div>
+        </main>
+        
+        <footer>
+            <p>&copy; 2026 HA-Dash | <a href="https://github.com/sjefferson99/ha-dash">GitHub</a></p>
+        </footer>
+    </div>
+</body>
+</html>
